@@ -53,4 +53,40 @@ describe('computeDiagnostics', () => {
       expect(() => computeDiagnostics(analysisOf(text), DEFAULT_CONFIG)).not.toThrow();
     }
   });
+
+  it('maps binder E500 diagnostics with ranges and eval phase data', () => {
+    const diagnostics = computeDiagnostics(analysisOf('let copy = missing_name\n'), DEFAULT_CONFIG);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({
+      code: 'E500_EVAL_UNBOUND_VAR',
+      range: { start: { line: 0, character: 11 }, end: { line: 0, character: 23 } },
+      data: { phase: 'eval', hint: 'Declare it with `let` before use.' },
+    });
+  });
+
+  it('maps E506 and sorts diagnostics by source offset', () => {
+    const diagnostics = computeDiagnostics(analysisOf('let x = 1\nlet x = 2\nlet y = 1 + "a"\n'), DEFAULT_CONFIG);
+    expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
+      'E506_EVAL_REDECLARATION',
+      'E501_EVAL_TYPE_MISMATCH',
+    ]);
+  });
+
+  it('gates scope, strict and literal checks independently', () => {
+    const source = '#!strict\nlet copy = missing_name\nlet s = 1 + "a"\n1 | json.parse\n';
+    const all = computeDiagnostics(analysisOf(source), DEFAULT_CONFIG);
+    expect(all.map((diagnostic) => diagnostic.code)).toEqual([
+      'E500_EVAL_UNBOUND_VAR',
+      'E501_EVAL_TYPE_MISMATCH',
+      'E505_EVAL_PIPE_TYPE_ERROR',
+    ]);
+
+    const config = resolveConfig({ diagnostics: { scope: false, strictChecks: false, literalTypes: false } });
+    expect(computeDiagnostics(analysisOf(source), config)).toEqual([]);
+  });
+
+  it('does not report semantic errors on a recovered parse', () => {
+    const diagnostics = computeDiagnostics(analysisOf('let x = "abc\nlet y = missing_name\n'), DEFAULT_CONFIG);
+    expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual(['E101_LEX_UNTERMINATED_STRING']);
+  });
 });

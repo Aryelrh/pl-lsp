@@ -121,3 +121,71 @@ describe('diagnostics', () => {
     server.dispose();
   });
 });
+
+describe('static diagnostics (phase 2)', () => {
+  const cases: [string, string, string, { start: { line: number; character: number }; end: { line: number; character: number } }][] = [
+    [
+      'E500',
+      'let copy = missing_name\n',
+      'E500_EVAL_UNBOUND_VAR',
+      { start: { line: 0, character: 11 }, end: { line: 0, character: 23 } },
+    ],
+    [
+      'E506',
+      'let x = 1\nlet x = 2\n',
+      'E506_EVAL_REDECLARATION',
+      { start: { line: 1, character: 0 }, end: { line: 1, character: 9 } },
+    ],
+    [
+      'E505',
+      '#!strict\n1 | json.parse\n',
+      'E505_EVAL_PIPE_TYPE_ERROR',
+      { start: { line: 1, character: 4 }, end: { line: 1, character: 14 } },
+    ],
+    [
+      'E501',
+      'let s = 1 + "a"\n',
+      'E501_EVAL_TYPE_MISMATCH',
+      { start: { line: 0, character: 8 }, end: { line: 0, character: 15 } },
+    ],
+    [
+      'E502',
+      'let n = 5\nn(1)\n',
+      'E502_EVAL_NOT_CALLABLE',
+      { start: { line: 1, character: 0 }, end: { line: 1, character: 4 } },
+    ],
+    [
+      'E503',
+      'fn f(a) {\n  return a\n}\nf(1, 2)\n',
+      'E503_EVAL_ARITY_MISMATCH',
+      { start: { line: 3, character: 0 }, end: { line: 3, character: 7 } },
+    ],
+    [
+      'E504',
+      'let q = 1 / 0\n',
+      'E504_EVAL_DIVISION_BY_ZERO',
+      { start: { line: 0, character: 8 }, end: { line: 0, character: 13 } },
+    ],
+  ];
+
+  for (const [name, source, code, range] of cases) {
+    it(`publishes ${name} with an exact range`, async () => {
+      const server = createTestClient();
+      await server.initialize();
+      const published = await open(server, `file:///tmp/${name.toLowerCase()}.placitum`, source);
+      expect(published.diagnostics).toHaveLength(1);
+      expect(published.diagnostics[0]).toMatchObject({ code, source: 'placitum', severity: 1, range });
+      server.dispose();
+    });
+  }
+
+  it('honors the initializationOptions diagnostic gates', async () => {
+    const server = createTestClient();
+    await server.initialize({}, { placitum: { diagnostics: { scope: false, strictChecks: false, literalTypes: false } } });
+    const source = '#!strict\nlet copy = missing_name\nlet s = 1 + "a"\n1 | json.parse\n';
+    const published = await open(server, 'file:///tmp/gated.placitum', source);
+    expect(published.diagnostics).toEqual([]);
+    server.dispose();
+  });
+});
+

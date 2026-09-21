@@ -1,5 +1,5 @@
 #!strict
-needs fs.read("/etc/**"), net("api.example.com"), env(API_KEY?)
+needs fs.read("/etc/**"), net("api.example.com"), env(API_KEY?), exec("/usr/bin/*")
 
 # Loads a JSON config, queries the status endpoint, and prints a summary.
 fn load(path) needs only(fs.read("/etc/**")) {
