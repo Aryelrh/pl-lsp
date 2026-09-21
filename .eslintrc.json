@@ -1,0 +1,92 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "plugins": ["@typescript-eslint"],
+  "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
+  "env": {
+    "node": true,
+    "es2022": true
+  },
+  "ignorePatterns": ["dist/", "node_modules/"],
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/ban-ts-comment": [
+      "error",
+      { "ts-ignore": true, "ts-expect-error": true, "ts-nocheck": true, "ts-check": false }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["child_process", "node:child_process"],
+                "message": "The language server never spawns processes."
+              },
+              {
+                "group": [
+                  "net", "node:net", "http", "node:http", "https", "node:https",
+                  "os", "node:os", "dgram", "node:dgram", "tls", "node:tls"
+                ],
+                "message": "The language server makes no network/OS calls."
+              },
+              {
+                "group": ["fs", "node:fs", "node:fs/promises"],
+                "message": "Reading files is restricted to src/workspace/files.ts and src/log.ts."
+              },
+              {
+                "group": ["placitum/*"],
+                "message": "Import the core only through the root barrel (`placitum`), via src/analysis/core-adapter.ts."
+              },
+              {
+                "group": ["placitum/dist/*"],
+                "message": "Never deep-import core internals; use the public API (see directive §5)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/workspace/files.ts", "src/log.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["child_process", "node:child_process"],
+                "message": "The language server never spawns processes."
+              },
+              {
+                "group": [
+                  "net", "node:net", "http", "node:http", "https", "node:https",
+                  "os", "node:os", "dgram", "node:dgram", "tls", "node:tls"
+                ],
+                "message": "The language server makes no network/OS calls."
+              },
+              {
+                "group": ["placitum/*"],
+                "message": "Import the core only through the root barrel (`placitum`), via src/analysis/core-adapter.ts."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/analysis/core-adapter.ts"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ]
+}

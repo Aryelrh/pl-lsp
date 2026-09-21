@@ -1,0 +1,26 @@
+{
+  "uri": "file:///tmp/uncovered.placitum",
+  "diagnostics": [
+    {
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 13
+        },
+        "end": {
+          "line": 0,
+          "character": 42
+        }
+      },
+      "severity": 1,
+      "code": "E301_EXTRACT_UNCOVERED_CAPABILITY",
+      "source": "placitum",
+      "message": "fs.readFile!(\"/etc/app.json\") has a compile-time-literal target that no in-scope needs fs.read(...) token covers.\n\nhint: Add needs fs.read(\"/etc/app.json\") at the top of the script, or delete the call.",
+      "data": {
+        "phase": "extract",
+        "hint": "Add needs fs.read(\"/etc/app.json\") at the top of the script, or delete the call."
+      }
+    }
+  ],
+  "version": 1
+}
