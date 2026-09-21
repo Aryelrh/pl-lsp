@@ -1,0 +1,1 @@
+let config = fs.readFile!("/etc/app.json")
