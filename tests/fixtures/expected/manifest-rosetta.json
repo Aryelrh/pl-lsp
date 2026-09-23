@@ -1,0 +1,54 @@
+{
+  "markdown": "grants (statically proven):\n  fs.read   /etc/**\n  fs.write  (none)\n  exec      /usr/bin/*\n  net       api.example.com\n  env       API_KEY (optional)\n\nfn load (attenuated needs only(...)):\n  grants (statically proven):\n    fs.read   /etc/**\n    fs.write  (none)\n    exec      (none)\n    net       (none)\n    env       (none)\n\n  deferred to runtime:\n    fsRead   [228..246]  argument 0 is not a compile-time string literal (Identifier `path`)\n\ndeferred to runtime:\n  (none)\n\nnote: path grants match the canonicalized path (symlinks and .. are resolved before matching)\n",
+  "manifest": {
+    "net": [
+      {
+        "type": "exact",
+        "pattern": "api.example.com"
+      }
+    ],
+    "fsRead": [
+      {
+        "raw": "/etc/**"
+      }
+    ],
+    "fsWrite": [],
+    "exec": [
+      {
+        "raw": "/usr/bin/*"
+      }
+    ],
+    "env": [
+      {
+        "name": "API_KEY",
+        "optional": true
+      }
+    ],
+    "scoped": {
+      "load": {
+        "net": [],
+        "fsRead": [
+          {
+            "raw": "/etc/**"
+          }
+        ],
+        "fsWrite": [],
+        "exec": [],
+        "env": [],
+        "scoped": {},
+        "deferredToRuntime": [
+          {
+            "nodeSpan": [
+              228,
+              246
+            ],
+            "category": "fsRead",
+            "reason": "argument 0 is not a compile-time string literal (Identifier `path`)"
+          }
+        ]
+      }
+    },
+    "deferredToRuntime": []
+  },
+  "diagnostics": []
+}

@@ -1,11 +1,15 @@
 /** Connection wiring: lifecycle, capabilities, document sync, configuration, features. */
 import { fileURLToPath } from 'node:url';
 import {
+  CodeActionKind,
   DidChangeWatchedFilesNotification,
   MarkupKind,
+  MessageType,
   ResponseError,
+  ShowMessageNotification,
   TextDocumentSyncKind,
   type ClientCapabilities,
+  type CodeAction,
   type Connection,
   type InitializeParams,
   type InitializeResult,
@@ -16,11 +20,16 @@ import { DEFAULT_CONFIG, resolveConfig, type PlacitumConfig } from './config.js'
 import { Documents } from './documents.js';
 import type { Logger } from './log.js';
 import type { Analysis } from './analysis/model.js';
+import { codeActionsAt } from './features/code-actions.js';
+import { codeLenses } from './features/code-lens.js';
 import { completeAt } from './features/completion.js';
 import { definitionAt, typeDefinitionAt, type DefinitionTarget } from './features/definition.js';
+import { computeDiagnostics } from './features/diagnostics.js';
 import { foldingRanges } from './features/folding.js';
 import { highlightsAt } from './features/highlights.js';
 import { hoverAt } from './features/hover.js';
+import { inlayHints } from './features/inlay-hints.js';
+import { capMessage, manifestPayload, type ManifestPayload } from './features/manifest-command.js';
 import { referencesAt } from './features/references.js';
 import { prepareRenameAt, renameAt } from './features/rename.js';
 import { selectionRanges } from './features/selection.js';
@@ -29,6 +38,10 @@ import { signatureHelpAt } from './features/signature.js';
 import { documentSymbols } from './features/symbols.js';
 import { WorkspaceIndex } from './workspace/files.js';
 import { VERSION } from './version.js';
+
+interface ManifestParams {
+  textDocument: { uri: string };
+}
 
 export interface ServerOptions {
   log: Logger;
@@ -64,6 +77,12 @@ function initializeResult(): InitializeResult {
       documentHighlightProvider: true,
       foldingRangeProvider: true,
       selectionRangeProvider: true,
+      codeActionProvider: { codeActionKinds: [CodeActionKind.QuickFix], resolveProvider: false },
+      codeLensProvider: { resolveProvider: false },
+      inlayHintProvider: { resolveProvider: false },
+      executeCommandProvider: {
+        commands: ['placitum.showManifest', 'placitum.reanalyze', 'placitum.addNeeds'],
+      },
       semanticTokensProvider: {
         legend: { tokenTypes: [...TOKEN_TYPES], tokenModifiers: [...TOKEN_MODIFIERS] },
         full: true,
@@ -305,6 +324,88 @@ export function createServer(connection: Connection, options: ServerOptions): vo
       return semanticTokens(analysis);
     }),
   );
+
+  connection.onCodeAction((params) =>
+    respond(log, 'codeAction', [], () => {
+      const analysis = analysisAt(params.textDocument.uri);
+      if (analysis === undefined) return [];
+      return codeActionsAt(analysis, params.range, computeDiagnostics(analysis, config));
+    }),
+  );
+
+  connection.onCodeLens((params) =>
+    respond(log, 'codeLens', [], () => {
+      if (!config.codeLens.enable) return [];
+      const analysis = analysisAt(params.textDocument.uri);
+      return analysis === undefined ? [] : codeLenses(analysis);
+    }),
+  );
+
+  connection.languages.inlayHint.on((params) =>
+    respond(log, 'inlayHint', [], () => {
+      if (!config.inlayHints.enable) return [];
+      const analysis = analysisAt(params.textDocument.uri);
+      if (analysis === undefined) return [];
+      return inlayHints(analysis, params.range, { capabilities: config.inlayHints.capabilities });
+    }),
+  );
+
+  connection.onRequest('placitum/manifest', (params: ManifestParams) =>
+    respond<ManifestPayload>(
+      log,
+      'manifest',
+      { markdown: 'Document is not open.', manifest: null, diagnostics: [] },
+      () => {
+        const analysis = analysisAt(params.textDocument.uri);
+        if (analysis === undefined) return { markdown: 'Document is not open.', manifest: null, diagnostics: [] };
+        return manifestPayload(analysis);
+      },
+    ),
+  );
+
+  connection.onExecuteCommand((params) => {
+    const uri = params.arguments?.find((argument): argument is string => typeof argument === 'string');
+    if (uri === undefined) return;
+    try {
+      switch (params.command) {
+        case 'placitum.showManifest': {
+          const analysis = analysisAt(uri);
+          if (analysis === undefined) return;
+          const payload = manifestPayload(analysis);
+          log.info(`manifest for ${uri}:\n${payload.markdown}`);
+          connection.sendNotification(ShowMessageNotification.type, {
+            type: MessageType.Info,
+            message: capMessage(payload.markdown),
+          });
+          return;
+        }
+        case 'placitum.reanalyze':
+          documents.reanalyze(uri);
+          return;
+        case 'placitum.addNeeds': {
+          const analysis = analysisAt(uri);
+          if (analysis === undefined) return;
+          const uncovered = computeDiagnostics(analysis, config).find(
+            (diagnostic) => diagnostic.code === 'E301_EXTRACT_UNCOVERED_CAPABILITY',
+          );
+          if (uncovered === undefined) return;
+          const action = codeActionsAt(analysis, uncovered.range, [uncovered]).find(
+            (candidate): candidate is CodeAction => 'edit' in candidate,
+          );
+          if (action?.edit !== undefined) {
+            void connection.workspace
+              .applyEdit(action.edit)
+              .catch((error: unknown) => log.error('applyEdit failed', error));
+          }
+          return;
+        }
+        default:
+          log.debug(`unhandled command: ${params.command}`);
+      }
+    } catch (error) {
+      log.error(`command ${params.command} failed`, error);
+    }
+  });
 
   connection.onShutdown(() => {
     log.info('shutdown requested');

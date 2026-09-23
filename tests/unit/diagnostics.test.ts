@@ -29,6 +29,7 @@ describe('computeDiagnostics', () => {
     expect(diagnostic?.data).toEqual({
       phase: 'extract',
       hint: 'Add needs fs.read("/etc/app.json") at the top of the script, or delete the call.',
+      quickFixes: ['add-needs'],
     });
   });
 

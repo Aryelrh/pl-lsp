@@ -11,10 +11,11 @@ import {
   analyzeSource,
   calleeSignature,
   collectStrictDiagnostics,
+  explain,
   globCovers,
   hostToRegex,
 } from 'placitum';
-import type { AnalysisResult, Expr, NativeSig, PlacitumError, Program } from 'placitum';
+import type { AnalysisResult, Expr, NativeSig, PlacitumError, Program, SerializedManifest } from 'placitum';
 
 /** Commit SHA of quesadx/pl-lg pinned in package.json (see docs/CORE-VERSION.md). */
 export const CORE_API_VERSION = 'dd1f362b35888d8a19b2215772db2389e8bb244a';
@@ -31,6 +32,11 @@ export function strictDiagnostics(program: Program): PlacitumError[] {
 
 export function signatureOf(callee: Expr): NativeSig | null {
   return calleeSignature(callee);
+}
+
+/** Core's manifest renderer, verbatim: `placitum explain` output byte for byte. */
+export function explainManifest(manifest: SerializedManifest): string {
+  return explain(manifest);
 }
 
 export { AMBIENT_BANGS, BANG_REGISTRY, BANG_SIGNATURES, EFFECTFUL_STDLIB, PURE_SIGNATURES, globCovers, hostToRegex };
