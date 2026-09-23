@@ -1,0 +1,29 @@
+{
+  "uri": "file:///tmp/syntax.placitum",
+  "diagnostics": [
+    {
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 8
+        },
+        "end": {
+          "line": 0,
+          "character": 12
+        }
+      },
+      "severity": 1,
+      "code": "E101_LEX_UNTERMINATED_STRING",
+      "source": "placitum",
+      "message": "String literal is not closed before end of line/input.\n\nhint: Close the string with a matching \".",
+      "data": {
+        "phase": "lex",
+        "hint": "Close the string with a matching \".",
+        "quickFixes": [
+          "insert-closing-quote"
+        ]
+      }
+    }
+  ],
+  "version": 1
+}

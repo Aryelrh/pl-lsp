@@ -1,0 +1,11 @@
+#!strict
+# comment about the program
+needs net("api.example.com"), fs.read("/etc/**")
+
+let x = 1
+x = 2
+let obj = { key: "value" }
+let text = f"x is {x}"
+let parsed = json.parse(text)
+let r = curl!("https://api.example.com/v1")
+print!(r.status)

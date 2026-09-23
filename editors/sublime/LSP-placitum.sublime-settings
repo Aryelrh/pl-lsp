@@ -1,0 +1,10 @@
+{
+  "clients": {
+    "placitum-lsp": {
+      "enabled": true,
+      "command": ["placitum-lsp", "--stdio"],
+      "selector": "source.placitum",
+      "syntaxes": ["Packages/User/Placitum/Placitum.sublime-syntax"]
+    }
+  }
+}

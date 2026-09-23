@@ -1,0 +1,22 @@
+#!strict
+needs fs.read("/etc/**"), net("api.example.com"), env(API_KEY?), exec("/usr/bin/*")
+
+# Loads a JSON config, queries the status endpoint, and prints a summary.
+fn load(path) needs only(fs.read("/etc/**")) {
+  let data = fs.readFile!(path)
+  return data
+}
+
+let cfg = load("/etc/app.json")
+let parsed = cfg | json.parse
+let response = curl!("https://api.example.com/v1/status")
+
+if response.status == 200 {
+  print!("ok")
+} else {
+  eprint!("failed: " + response.body)
+}
+
+for key in ["a", "b"] {
+  print!(key)
+}

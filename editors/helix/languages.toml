@@ -1,0 +1,11 @@
+[language-server.placitum]
+command = "placitum-lsp"
+args = ["--stdio"]
+
+[[language]]
+name = "placitum"
+scope = "source.placitum"
+file-types = ["placitum"]
+language-servers = ["placitum"]
+comment-token = "#"
+indent = { tab-width = 4, unit = "    " }
