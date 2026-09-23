@@ -36,10 +36,10 @@ markdown is the core `explain` output byte for byte, and the commands
 Compatibility is hardened and documented: every feature degrades per client
 capability, copy-paste recipes ship in `editors/` for Neovim, Helix, Emacs, Zed,
 Sublime, Vim and Kate, and `docs/COMPATIBILITY.md` holds the capability-by-capability
-matrix. Packaging is release-ready: `npm pack` contents are snapshotted and
-`npm run smoke:pack` installs the tarball in a fresh temp project and runs a raw
-stdio E2E against the installed binary; the VS Code handoff spec is complete in
-`docs/VSCODE-HANDOFF.md`.
+matrix. Both packages are published on npm — [`placitum@1.0.0`](https://www.npmjs.com/package/placitum)
+and [`placitum-lsp@0.1.0`](https://www.npmjs.com/package/placitum-lsp) — with
+snapshotted `npm pack` contents and a fresh-machine smoke (`npm run smoke:pack`)
+in CI; the VS Code handoff spec is complete in `docs/VSCODE-HANDOFF.md`.
 `npm run ci` is green (typecheck, lint, build, 274 unit/protocol/e2e tests, a
 stdout-purity check, Neovim E2E driving the shipped recipe for rename, completion,
 hover, diagnostics and the manifest, and the packaging smoke).
@@ -101,8 +101,8 @@ npm install -g placitum-lsp
 placitum-lsp --stdio
 ```
 
-> Publishing to npm is not enabled yet; until then use `npm link` / a packed tarball
-> (`npm pack`). The server must always be reachable as `placitum-lsp` on `PATH`.
+> Published to npm as `placitum-lsp`; the core language is `placitum`. The server
+> must always be reachable as `placitum-lsp` on `PATH`.
 
 ## CLI
 

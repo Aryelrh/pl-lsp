@@ -137,9 +137,9 @@ Notes:
 
 ## 4. Bundling the server
 
-Bundle the published `placitum-lsp` **and** its `placitum` dependency into
-`server/dist/` (keep it out of this repo). With esbuild, ESM output and the
-extension host's Node:
+Depend on the published `placitum-lsp@^0.1.0` (it pulls `placitum@^1.0.0` from
+npm) and bundle both into `server/dist/` (keep it out of this repo). With
+esbuild, ESM output and the extension host's Node:
 
 ```sh
 npx esbuild node_modules/placitum-lsp/dist/bin.js \

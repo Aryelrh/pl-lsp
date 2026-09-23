@@ -8,6 +8,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Published to npm as `placitum-lsp@0.1.0`; the core dependency is now the
+  registry package `placitum@^1.0.0` instead of a pinned git SHA, and the repo
+  ships CI/release GitHub Actions workflows.
 - Multi-root workspace symbols: `workspace/didChangeWorkspaceFolders` rescans
   added/removed folders and container names are prefixed with the folder when
   there is more than one root.

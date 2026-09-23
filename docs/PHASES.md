@@ -8,8 +8,9 @@ directiva.
 
 - Estado actual: **Fases 0–6 completas; Fase 7 en curso** (solo la revisión del
   teammate y el `vsce package` quedan fuera de este repo); **Fase 8 parcial**
-  (multi-root, pull diagnostics y delta de semantic tokens) · `npm run ci` verde
-  (274 tests + smoke de empaquetado)
+  (multi-root, pull diagnostics, delta de semantic tokens y publicación a npm:
+  `placitum@1.0.0` + `placitum-lsp@0.1.0`) · `npm run ci` verde (274 tests + smoke
+  de empaquetado)
 - Cómo leer: cada fase tiene *Objetivo → Conceptos → Qué se construyó → Decisiones y
   límites → Tests y gate → Cómo probarlo a mano*.
 
@@ -627,8 +628,9 @@ npm run smoke:pack          # install en dir temporal + E2E crudo (requiere red)
 
 ## Fase 8 — Futuro opcional (parcial)
 
-**Estado:**  3 de 6 ítems completos, pedidos explícitamente: multi-root workspace
-symbols, pull diagnostics y delta de semantic tokens. Pendientes: publicar a npm,
+**Estado:**  4 de 6 ítems completos, pedidos explícitamente: multi-root workspace
+symbols, pull diagnostics, delta de semantic tokens y **publicación a npm**
+(`placitum@1.0.0` en pl-lg, `placitum-lsp@0.1.0` en pl-lsp). Pendientes:
 grammar tree-sitter y binario standalone (cada uno con su propio gate).
 
 ### Conceptos
@@ -647,6 +649,13 @@ grammar tree-sitter y binario standalone (cada uno con su propio gate).
   versión. La primera respuesta es full; con `previousResultId` válido se manda
   un único edit mínimo (prefijo/sufijo común en tokens de 5 números). Sin base o
   con resultId viejo, se responde full. La caché se limpia al cerrar el documento.
+- **Publicación a npm.** El core se publicó como `placitum@1.0.0` y pl-lsp como
+  `placitum-lsp@0.1.0`; la dependencia pasó del SHA de git a `^1.0.0` de registry.
+  Cada repo tiene workflows `CI` (push/PR) y `Release` (tags `v*` +
+  `workflow_dispatch`) con `--provenance --access public`; los tokens van como
+  secret `NPM_TOKEN` (o Trusted Publishing, sin token, para las próximas). El
+  `prepublishOnly` corre el gate `verify` (sin el smoke anidado, que rompía el
+  `npm publish --dry-run`); el smoke queda en `ci` y en el workflow de release.
 
 ### Qué se construyó
 
@@ -682,6 +691,8 @@ full, y alta de carpeta con prefijo de `containerName`.
 ```sh
 npx vitest run tests/protocol/compatibility.test.ts   # pull + multi-root
 npx vitest run tests/protocol/intelligence.test.ts    # full + delta
+npm view placitum-lsp version                         # 0.1.0 en el registry
+npx placitum-lsp --version                            # instalado desde npm
 ```
 
 ---
