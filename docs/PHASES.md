@@ -6,7 +6,7 @@ conceptos hay detrás**. Se actualiza al cerrar cada fase del plan de referencia
 el código, los mensajes y la documentación de producto van en inglés, como exige la
 directiva.
 
-- Estado actual: **Fases 0–6 completas** · `npm run ci` verde (262 tests)
+- Estado actual: **Fases 0–6 completas** · `npm run ci` verde (264 tests)
 - Cómo leer: cada fase tiene *Objetivo → Conceptos → Qué se construyó → Decisiones y
   límites → Tests y gate → Cómo probarlo a mano*.
 
@@ -517,17 +517,25 @@ copy-paste por editor, con una matriz de compatibilidad honesta.
 
 ### Decisiones y límites
 
-- La verificación manual en Helix, Emacs, Zed, Sublime, Vim (plugins) y Kate no
-  se ejecutó: esos clientes no están instalados en la máquina de desarrollo. Queda
-  registrada como `pending` en `docs/EDITOR-CHECKLIST.md` con los pasos exactos;
-  no se reportó como verificada.
+- La verificación se ejecutó con instalaciones temporales de Nix (`nix shell` /
+  `nix build`, nada agregado al repo): Helix 25.07.1 (E301, hover, completion,
+  rename scope-aware y manifest vía `:lsp-workspace-command`), Emacs 31.1 con
+  eglot (E500, hover plaintext, completion, rename) y con lsp-mode (conexión, 19
+  capabilities, hover markdown), Vim + vim-lsp 0.1.4 (server `running`, E500) y
+  Neovim 0.10.2 + nvim-lspconfig (attach + E500). Fechas, versiones y comandos
+  en `docs/EDITOR-CHECKLIST.md`.
+- Zed, Kate, Sublime y coc.nvim quedan `pending`: no tienen superficie headless
+  (GUI o falta de paquete en nixpkgs) y no se reportaron como verificados.
+- Bug real encontrado al probar Helix: `executeCommand` sin argumentos (los
+  palettes mandan la lista vacía) no hacía nada. El server ahora cae al único
+  documento abierto si no recibe URI; test en `capabilities.test.ts`.
 - Los quick fixes requieren `codeActionLiteralSupport` (universal desde LSP 3.8);
   no se agrega el fallback a `Command[]` porque un `Command` no puede transportar
   el `WorkspaceEdit`.
 - Sublime (paquete LSP) no consume semantic tokens y Kate no los pide: la matriz
   lo dice explícitamente en vez de asumir paridad.
 - Helix y Zed necesitan un grammar tree-sitter para highlighting; las features
-  LSP no dependen de él.
+  LSP no dependen de él (Helix lo reporta como `✘` en `hx --health`).
 
 ### Gate
 

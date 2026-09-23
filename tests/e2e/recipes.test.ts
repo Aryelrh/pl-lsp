@@ -18,7 +18,7 @@ const JSON_RECIPES = [
   'kate/lspclient.json',
 ];
 
-const LUA_RECIPES = ['neovim/init.lua', 'neovim/nvim-lspconfig.lua'];
+const LUA_RECIPES = ['neovim/init.lua', 'neovim/nvim-lspconfig.lua', 'checks/nvim-lspconfig.lua'];
 
 /** Strip a trailing comment without touching `#` inside quoted values. */
 function stripComment(line: string): string {
@@ -80,9 +80,16 @@ describe('editor recipes', () => {
     }
   });
 
+  it('syntax-checks the Helix check script with bash -n', () => {
+    const result = spawnSync('bash', ['-n', recipe('checks/helix.sh')], { encoding: 'utf8', timeout: 15000 });
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+  });
+
   it('ships a recipe for every documented client', () => {
     const readme = readFileSync(recipe('README.md'), 'utf8');
-    for (const path of [...JSON_RECIPES, ...LUA_RECIPES, 'helix/languages.toml', 'emacs/eglot.el', 'emacs/lsp-mode.el', 'vim/vim-lsp.vim']) {
+    const recipes = [...JSON_RECIPES, ...LUA_RECIPES.filter((path) => !path.startsWith('checks/'))];
+    for (const path of [...recipes, 'helix/languages.toml', 'emacs/eglot.el', 'emacs/lsp-mode.el', 'vim/vim-lsp.vim']) {
       expect(readme).toContain(path);
     }
   });

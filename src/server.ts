@@ -364,8 +364,17 @@ export function createServer(connection: Connection, options: ServerOptions): vo
     ),
   );
 
+  // Clients like Helix invoke server commands without arguments; fall back to the
+  // only open document so `placitum.showManifest` still works from a palette.
+  const commandUri = (args: readonly unknown[] | undefined): string | undefined => {
+    const explicit = args?.find((argument): argument is string => typeof argument === 'string');
+    if (explicit !== undefined) return explicit;
+    const open = [...documents.sync.keys()];
+    return open.length === 1 ? open[0] : undefined;
+  };
+
   connection.onExecuteCommand((params) => {
-    const uri = params.arguments?.find((argument): argument is string => typeof argument === 'string');
+    const uri = commandUri(params.arguments);
     if (uri === undefined) return;
     try {
       switch (params.command) {

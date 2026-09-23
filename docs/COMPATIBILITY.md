@@ -29,30 +29,35 @@ enough to be useful. Everything else degrades gracefully:
 | Quick fixes | `textDocument.codeAction.codeActionLiteralSupport` (universal since LSP 3.8) | A pre-3.8 client would receive `CodeAction` objects it cannot apply; use a client from this decade | `capabilities.test.ts` |
 | Code lens / inlay hints | `textDocument.codeLens` / `textDocument.inlayHints` | Features not requested; config defaults keep inlay hints off | `capabilities.test.ts` |
 | `placitum/manifest` | none (custom request) | Recipe/command hooks only | `capabilities.test.ts` |
-| Commands | none (custom methods) | `executeCommand` works with the three advertised ids | `capabilities.test.ts` |
+| Commands | none (custom methods) | The three advertised ids; without arguments the server falls back to the only open document (Helix-style palettes) | `capabilities.test.ts` |
 | Unknown requests | — | JSON-RPC `MethodNotFound` (-32601), server stays alive | `lifecycle.test.ts` |
 
 ## Editor matrix
 
-Legend: ✅ works out of the box · ⚠️ works with a limitation · ❓ not verified
-here (client not installed on the development machine) · n/a not applicable.
+Legend: ✅ exercised on this machine · ⚠️ expected (standard request; not
+individually exercised) or limited · ❓ not verified (client not available
+headlessly) · n/a not applicable. Dates, versions and commands are recorded in
+`docs/EDITOR-CHECKLIST.md`.
 
 | Editor | Diagnostics | Completion/Hover | Rename | Symbols | Semantic tokens | Code actions / lens / hints | Manifest |
 |---|---|---|---|---|---|---|---|
 | Neovim 0.12 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Neovim 0.10 + lspconfig | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Helix | ✅ | ✅ | ✅ | ✅ | ⚠️ needs tree-sitter grammar | ✅ | ⚠️ via `:lsp-workspace-command` |
-| Emacs (eglot/lsp-mode) | ✅ | ✅ | ✅ | ✅ | ⚠️ client-dependent | ✅ | ⚠️ custom request |
-| Zed | ✅ | ✅ | ✅ | ✅ | ⚠️ needs grammar/extension | ✅ | ⚠️ custom request |
-| Sublime Text (LSP) | ⚠️ needs a syntax for the selector | ✅ | ✅ | ✅ | ❌ LSP package does not request them | ✅ | ⚠️ custom request |
-| Vim (vim-lsp / coc.nvim) | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ⚠️ custom request |
-| Kate | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ⚠️ custom request |
+| Neovim 0.10 + lspconfig | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
+| Helix 25.07 | ✅ | ✅ | ✅ | ⚠️ | ⚠️ needs tree-sitter grammar | ⚠️ | ✅ `:lsp-workspace-command` |
+| Emacs 31 (eglot) | ✅ | ✅ (plaintext fallback) | ✅ | ⚠️ | ⚠️ client-dependent | ⚠️ | ⚠️ custom request |
+| Emacs 31 (lsp-mode) | ⚠️ | ✅ (markdown) | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
+| Vim (vim-lsp) | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
+| Vim (coc.nvim) | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
+| Zed | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
+| Sublime Text (LSP) | ❓ needs a syntax for the selector | ❓ | ❓ | ❓ | ❌ LSP package does not request them | ❓ | ❓ |
+| Kate | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ | ❓ |
 | VS Code | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (teammate extension) |
 
-⚠️ = expected to work but **not verified on this machine**; the recipes and
-manual checklist are in `editors/` and `docs/EDITOR-CHECKLIST.md`. Neovim is
-covered by the automated E2E (`tests/e2e/neovim.test.ts`), which drives the
-shipped `editors/neovim/init.lua` recipe.
+Neovim is covered by the automated E2E (`tests/e2e/neovim.test.ts`), which
+drives the shipped `editors/neovim/init.lua` recipe. Helix, both Emacs clients,
+Vim/vim-lsp and Neovim 0.10 were exercised with temporary Nix installs; the
+exact commands live in `docs/EDITOR-CHECKLIST.md`. Zed, Kate, Sublime and
+coc.nvim have no headless test surface here and remain unverified.
 
 ## Honest limitations
 

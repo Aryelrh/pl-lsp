@@ -35,7 +35,7 @@ Compatibility is hardened and documented: every feature degrades per client
 capability, copy-paste recipes ship in `editors/` for Neovim, Helix, Emacs, Zed,
 Sublime, Vim and Kate, and `docs/COMPATIBILITY.md` holds the capability-by-capability
 matrix.
-`npm run ci` is green (typecheck, lint, build, 262 unit/protocol/e2e tests, including a
+`npm run ci` is green (typecheck, lint, build, 264 unit/protocol/e2e tests, including a
 stdout-purity check and Neovim E2E driving the shipped recipe for rename, completion,
 hover, diagnostics and the manifest).
 

@@ -7,15 +7,15 @@ tarball). Node `>= 20`.
 | Client | Recipe | Tested version | Automated? |
 |---|---|---|---|
 | Neovim ≥ 0.11 | [`neovim/init.lua`](./neovim/init.lua) | 0.12.5 | yes (`tests/e2e/neovim.test.ts`) |
-| Neovim 0.10 + nvim-lspconfig | [`neovim/nvim-lspconfig.lua`](./neovim/nvim-lspconfig.lua) | not run (syntax-checked) | no |
-| Helix | [`helix/languages.toml`](./helix/languages.toml) | not run | no |
-| Emacs (eglot) | [`emacs/eglot.el`](./emacs/eglot.el) | not run | no |
-| Emacs (lsp-mode) | [`emacs/lsp-mode.el`](./emacs/lsp-mode.el) | not run | no |
-| Zed | [`zed/settings.json`](./zed/settings.json) | not run | no |
-| Sublime Text (LSP) | [`sublime/LSP-placitum.sublime-settings`](./sublime/LSP-placitum.sublime-settings) | not run | no |
-| Vim (vim-lsp) | [`vim/vim-lsp.vim`](./vim/vim-lsp.vim) | not run | no |
-| Vim (coc.nvim) | [`vim/coc-settings.json`](./vim/coc-settings.json) | not run | no |
-| Kate | [`kate/lspclient.json`](./kate/lspclient.json) | not run | no |
+| Neovim 0.10 + nvim-lspconfig | [`neovim/nvim-lspconfig.lua`](./neovim/nvim-lspconfig.lua) | 0.10.2 + lspconfig 2024-11-12 | verified via Nix |
+| Helix | [`helix/languages.toml`](./helix/languages.toml) | 25.07.1 | verified via Nix |
+| Emacs (eglot) | [`emacs/eglot.el`](./emacs/eglot.el) | 31.1 | verified via Nix |
+| Emacs (lsp-mode) | [`emacs/lsp-mode.el`](./emacs/lsp-mode.el) | 31.1 + lsp-mode 20260905 | verified via Nix |
+| Zed | [`zed/settings.json`](./zed/settings.json) | 1.20.1 available | pending (GUI, no headless probe) |
+| Sublime Text (LSP) | [`sublime/LSP-placitum.sublime-settings`](./sublime/LSP-placitum.sublime-settings) | — | pending (not in nixpkgs) |
+| Vim (vim-lsp) | [`vim/vim-lsp.vim`](./vim/vim-lsp.vim) | vim-lsp 0.1.4 | verified via Nix |
+| Vim (coc.nvim) | [`vim/coc-settings.json`](./vim/coc-settings.json) | — | pending (needs interactive host) |
+| Kate | [`kate/lspclient.json`](./kate/lspclient.json) | — | pending (GUI, not in nixpkgs) |
 | VS Code | teammate repo; see [`../docs/VSCODE-HANDOFF.md`](../docs/VSCODE-HANDOFF.md) | n/a | n/a |
 
 ## Manual checklist (per client)
