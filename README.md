@@ -22,11 +22,13 @@ multi-error lexing) plus the LSP analysis engine: binder `E500`/`E506`, `#!stric
 and definitely-certain literal checks `E501`–`E504`, each with exact UTF-16 ranges and
 config gates. Navigation is live: definition / type definition (`LocationLink` or
 `Location` per client), references, scope-aware rename, document symbols (hierarchical or
-flat), and capped on-demand workspace symbols with an mtime cache and watched-file
-invalidation. Intelligence is live too: context-aware completion, hover (bindings,
+flat), and capped on-demand workspace symbols with an mtime cache, watched-file
+invalidation and multi-root folder changes. Intelligence is live too: context-aware completion, hover (bindings,
 builtins, members, bang coverage, capability tokens, keywords), signature help (with pipe
-prepend), full semantic tokens, folding, selection ranges and document highlights — all
-with fallbacks that keep working on half-typed files. Capability UX is live: deterministic
+prepend), semantic tokens (full and deltas), folding, selection ranges and document
+highlights — all with fallbacks that keep working on half-typed files. Diagnostics can be
+pulled (`textDocument/diagnostic`) by clients that support it, with push for the rest.
+Capability UX is live: deterministic
 quick fixes (add `needs`, insert `}`, declare with `let`, rename redeclarations), code lens
 over `needs` clauses, optional inlay hints, the custom `placitum/manifest` request whose
 markdown is the core `explain` output byte for byte, and the commands
@@ -38,7 +40,7 @@ matrix. Packaging is release-ready: `npm pack` contents are snapshotted and
 `npm run smoke:pack` installs the tarball in a fresh temp project and runs a raw
 stdio E2E against the installed binary; the VS Code handoff spec is complete in
 `docs/VSCODE-HANDOFF.md`.
-`npm run ci` is green (typecheck, lint, build, 266 unit/protocol/e2e tests, a
+`npm run ci` is green (typecheck, lint, build, 274 unit/protocol/e2e tests, a
 stdout-purity check, Neovim E2E driving the shipped recipe for rename, completion,
 hover, diagnostics and the manifest, and the packaging smoke).
 
@@ -46,18 +48,19 @@ hover, diagnostics and the manifest, and the packaging smoke).
 
 | Feature | Details |
 |---|---|
-| Diagnostics | Core error codes (`E1xx`–`E5xx`) with exact ranges; syntax errors never crash the server |
+| Diagnostics | Core error codes (`E1xx`–`E5xx`) with exact ranges; push plus pull (`textDocument/diagnostic`) for clients that declare support; syntax errors never crash the server |
 | Completion | Context-aware: capabilities after `needs`, `fs.read`/`fs.write`, pipe stages, member access, snippets |
 | Hover | Bindings, bang calls, capability tokens, deferred (runtime) capability checks |
-| Navigation | Definition, type definition, references, rename (`prepareRename`), document/workspace symbols |
-| Intelligence | Signature help, semantic tokens, folding, selection ranges, document highlights |
+| Navigation | Definition, type definition, references, rename (`prepareRename`), document/workspace symbols (multi-root) |
+| Intelligence | Signature help, semantic tokens (full + delta), folding, selection ranges, document highlights |
 | Capability UX | Quick fixes (add `needs`, insert `}`, rename), code lens, inlay hints, `placitum/manifest` |
 | Configuration | `workspace/configuration` + `initializationOptions.placitum`, defensive parsing |
 
 Capabilities advertised at `initialize`: `positionEncoding: utf-16`, incremental sync,
 completion (`" "`, `"."`, `"|"` triggers), hover, signature help, definition,
 type definition, references, rename, symbols, highlights, folding, selection ranges,
-quick fixes, code lens, inlay hints, semantic tokens (full), and the commands
+quick fixes, code lens, inlay hints, semantic tokens (full + delta), pull diagnostics
+(when the client declares `textDocument.diagnostic`), and the commands
 `placitum.showManifest`, `placitum.reanalyze`, `placitum.addNeeds`.
 
 ## Requirements

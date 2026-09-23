@@ -7,6 +7,8 @@ import type {
   FoldingRange,
   Hover,
   SemanticTokens,
+  SemanticTokensDelta,
+  SemanticTokensEdit,
   SelectionRange,
   SignatureHelp,
 } from 'vscode-languageserver/node.js';
@@ -37,7 +39,7 @@ describe('intelligence capabilities', () => {
     expect(result.capabilities.documentHighlightProvider).toBe(true);
     expect(result.capabilities.foldingRangeProvider).toBe(true);
     expect(result.capabilities.selectionRangeProvider).toBe(true);
-    expect(result.capabilities.semanticTokensProvider).toMatchObject({ full: true });
+    expect(result.capabilities.semanticTokensProvider).toMatchObject({ full: { delta: true } });
     expect(result.capabilities.semanticTokensProvider).toHaveProperty('legend.tokenTypes');
     server.dispose();
   });
@@ -131,4 +133,50 @@ describe('intelligence over the protocol', () => {
     expectGolden('semantic-tokens', tokens);
     server.dispose();
   });
+
+  it('serves semantic token deltas that reconstruct the stream', async () => {
+    const server = createTestClient();
+    await server.initialize();
+    const uri = 'file:///tmp/tokens-delta.placitum';
+    open(server, tokensFixture, uri);
+    const full = (await server.connection.sendRequest('textDocument/semanticTokens/full', {
+      textDocument: { uri },
+    })) as SemanticTokens;
+    expect(full.resultId).toBeDefined();
+
+    const delta = (await server.connection.sendRequest('textDocument/semanticTokens/full/delta', {
+      textDocument: { uri },
+      previousResultId: full.resultId,
+    })) as SemanticTokensDelta;
+    expect(delta.resultId).toBe(full.resultId);
+    expect(applyEdits(full.data, delta.edits)).toEqual(full.data);
+
+    server.connection.sendNotification('textDocument/didChange', {
+      textDocument: { uri, version: 2 },
+      contentChanges: [{ text: 'let x = 1\n' }],
+    });
+    const changed = (await server.connection.sendRequest('textDocument/semanticTokens/full/delta', {
+      textDocument: { uri },
+      previousResultId: full.resultId,
+    })) as SemanticTokensDelta;
+    expect(changed.resultId).not.toBe(full.resultId);
+    const rebuilt = applyEdits(full.data, changed.edits);
+    const fresh = (await server.connection.sendRequest('textDocument/semanticTokens/full', {
+      textDocument: { uri },
+    })) as SemanticTokens;
+    expect(rebuilt).toEqual(fresh.data);
+
+    const noBase = (await server.connection.sendRequest('textDocument/semanticTokens/full/delta', {
+      textDocument: { uri },
+      previousResultId: 'stale',
+    })) as SemanticTokens;
+    expect('data' in noBase).toBe(true);
+    server.dispose();
+  });
 });
+
+function applyEdits(data: readonly number[], edits: readonly SemanticTokensEdit[]): number[] {
+  const result = [...data];
+  for (const edit of edits) result.splice(edit.start, edit.deleteCount, ...(edit.data ?? []));
+  return result;
+}

@@ -44,6 +44,20 @@ export class Documents {
     return analysis;
   }
 
+  /**
+   * Fresh analysis for client-driven requests (pull diagnostics, semantic tokens):
+   * recomputes when the cached version is stale instead of waiting for the debounce.
+   */
+  freshAnalysis(uri: string): Analysis | undefined {
+    const document = this.sync.get(uri);
+    if (document === undefined) return undefined;
+    const cached = this.analyses.get(uri);
+    if (cached !== undefined && cached.version === document.version) return cached;
+    const analysis = createAnalysis(document);
+    this.analyses.set(uri, analysis);
+    return analysis;
+  }
+
   /** Force a synchronous re-analysis and publish immediately (configuration changes, commands). */
   reanalyze(uri: string): void {
     this.analyzeAndPublish(uri);

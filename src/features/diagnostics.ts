@@ -1,5 +1,9 @@
 /** Maps core and analysis diagnostics to LSP diagnostics (range, severity, code, message, data). Pure. */
-import { DiagnosticSeverity, type Diagnostic } from 'vscode-languageserver/node.js';
+import {
+  DiagnosticSeverity,
+  type Diagnostic,
+  type DocumentDiagnosticReport,
+} from 'vscode-languageserver/node.js';
 import type { BinderDiagnostic } from '../analysis/binder.js';
 import type { PlacitumError } from '../analysis/core-adapter.js';
 import type { Analysis } from '../analysis/model.js';
@@ -55,6 +59,32 @@ function toDiagnostic(analysis: Analysis, error: PlacitumError): Diagnostic {
 
 function sourceOffset(error: PlacitumError): number {
   return error.location?.span?.[0] ?? Number.MAX_SAFE_INTEGER;
+}
+
+/** Result id for pull diagnostics: changes with the version and the config gates. */
+export function diagnosticResultId(analysis: Analysis, config: PlacitumConfig): string {
+  const flags = [
+    config.diagnostics.enable,
+    config.diagnostics.scope,
+    config.diagnostics.strictChecks,
+    config.diagnostics.literalTypes,
+  ]
+    .map((flag) => (flag ? '1' : '0'))
+    .join('');
+  return `v${analysis.version}:${flags}`;
+}
+
+/** LSP 3.17 pull report; `previousResultId` matching means "unchanged" (directive §13, Phase 8). */
+export function documentDiagnostic(
+  analysis: Analysis,
+  config: PlacitumConfig,
+  previousResultId?: string,
+): DocumentDiagnosticReport {
+  const resultId = diagnosticResultId(analysis, config);
+  if (previousResultId !== undefined && previousResultId === resultId) {
+    return { kind: 'unchanged', resultId };
+  }
+  return { kind: 'full', resultId, items: computeDiagnostics(analysis, config) };
 }
 
 export function computeDiagnostics(analysis: Analysis, config: PlacitumConfig): Diagnostic[] {

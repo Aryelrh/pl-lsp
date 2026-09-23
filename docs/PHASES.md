@@ -7,8 +7,9 @@ el código, los mensajes y la documentación de producto van en inglés, como ex
 directiva.
 
 - Estado actual: **Fases 0–6 completas; Fase 7 en curso** (solo la revisión del
-  teammate y el `vsce package` quedan fuera de este repo) · `npm run ci` verde
-  (266 tests + smoke de empaquetado)
+  teammate y el `vsce package` quedan fuera de este repo); **Fase 8 parcial**
+  (multi-root, pull diagnostics y delta de semantic tokens) · `npm run ci` verde
+  (274 tests + smoke de empaquetado)
 - Cómo leer: cada fase tiene *Objetivo → Conceptos → Qué se construyó → Decisiones y
   límites → Tests y gate → Cómo probarlo a mano*.
 
@@ -622,13 +623,64 @@ npm run smoke:pack          # install en dir temporal + E2E crudo (requiere red)
 
 ---
 
-## Fase 8 — Futuro opcional (pendiente)
+## Fase 8 — Futuro opcional (parcial)
 
-**Estado:**  no iniciada (sólo si se pide).
+**Estado:**  3 de 6 ítems completos, pedidos explícitamente: multi-root workspace
+symbols, pull diagnostics y delta de semantic tokens. Pendientes: publicar a npm,
+grammar tree-sitter y binario standalone (cada uno con su propio gate).
 
-Publicar a npm, grammar tree-sitter (highlighting real en Helix/Zed), pull
-diagnostics, delta de semantic tokens, binario standalone y multi-root workspace
-symbols. Cada ítem necesita su propio gate.
+### Conceptos
+
+- **Multi-root.** `workspace/didChangeWorkspaceFolders` actualiza los roots y
+  resetea el índice (que se reconstruye on demand). Con más de un root, el
+  `containerName` se prefija con la carpeta (`mi-lib/x.placitum`) para
+  desambiguar archivos homónimos. El cap y la caché por mtime siguen igual.
+- **Pull diagnostics (LSP 3.17).** `textDocument/diagnostic` devuelve un report
+  `full` con `resultId` (`v<versión>:<gates de config>`); si el cliente manda un
+  `previousResultId` que coincide, se responde `unchanged` sin recalcular. El
+  provider se anuncia **solo** si el cliente declara `textDocument.diagnostic`;
+  el resto sigue con push. Los handlers pull usan `freshAnalysis` (recalcula si
+  la versión cacheada quedó vieja) para no responder datos stale tras un cambio.
+- **Delta de semantic tokens.** `full: { delta: true }` con `resultId` por
+  versión. La primera respuesta es full; con `previousResultId` válido se manda
+  un único edit mínimo (prefijo/sufijo común en tokens de 5 números). Sin base o
+  con resultId viejo, se responde full. La caché se limpia al cerrar el documento.
+
+### Qué se construyó
+
+| Archivo | Responsabilidad |
+|---|---|
+| `src/features/diagnostics.ts` | `documentDiagnostic()` + `diagnosticResultId()`. |
+| `src/features/semantic-tokens.ts` | `semanticTokensDelta()` + `semanticTokensResultId()`. |
+| `src/documents.ts` | `freshAnalysis()` para requests pull. |
+| `src/workspace/files.ts` | `containerName` con prefijo de carpeta en multi-root. |
+| `src/server.ts` | Handler de carpetas, pull diagnostics, delta + caché, capability condicional. |
+
+### Decisiones y límites
+
+- Push y pull coexisten: el cliente elige. Los que declaran pull reciben
+  `diagnosticProvider`; el resto sigue con `publishDiagnostics`.
+- El contrato §7.1 original anunciaba `semanticTokensProvider.full: true`; ahora
+  es `{ delta: true }` (requisito para deltas). Documentado acá y en
+  `docs/COMPATIBILITY.md`.
+- El delta es un solo edit por respuesta (prefijo/sufijo), no una secuencia
+  mínima óptima: suficiente y determinista; `ponytail:` si algún cliente mide el
+  ancho de banda, cambiar a LCS.
+- Multi-root no deduplica archivos entre roots solapados ni pagina el cap por
+  carpeta; el cap sigue siendo global.
+
+### Gate
+
+274 tests verdes (unit + protocolo + e2e + smoke de empaquetado), incluyendo:
+report pull full/unchanged/refresh, delta que reconstruye el stream y fallback a
+full, y alta de carpeta con prefijo de `containerName`.
+
+### Cómo probarlo
+
+```sh
+npx vitest run tests/protocol/compatibility.test.ts   # pull + multi-root
+npx vitest run tests/protocol/intelligence.test.ts    # full + delta
+```
 
 ---
 

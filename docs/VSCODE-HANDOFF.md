@@ -12,7 +12,7 @@ Server behavior and degradation per client capability: `docs/COMPATIBILITY.md`.
 ## 1. What the extension gets
 
 - A Language Server over stdio (`dist/bin.js --stdio`), Node `>= 20`, ESM.
-- Full capabilities: diagnostics, completion, hover, signature help,
+- Full capabilities: diagnostics (push and pull — VS Code uses pull), completion, hover, signature help,
   definition/type definition, references, rename, document/workspace symbols,
   highlights, folding, selection ranges, semantic tokens, code actions, code
   lens, inlay hints, the custom `placitum/manifest` request and the commands

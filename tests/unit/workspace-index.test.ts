@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Logger } from '../../src/log.js';
@@ -84,6 +84,23 @@ describe('WorkspaceIndex', () => {
     writeFileSync(file, 'fn again() { return 1 }\n');
     index.invalidate(uri);
     expect(names(index)).toEqual(['again']);
+  });
+
+  it('prefixes container names with the root folder when there are several roots', () => {
+    const other = mkdtempSync(join(tmpdir(), 'placitum-lsp-ws2-'));
+    try {
+      write('a.placitum', 'fn alpha() { return 1 }\n');
+      writeFileSync(join(other, 'b.placitum'), 'fn beta() { return 1 }\n');
+      const index = new WorkspaceIndex([root, other], 2000, logger);
+      const symbols = index.query('');
+      expect(symbols.map((symbol) => symbol.name)).toEqual(['alpha', 'beta']);
+      expect(symbols.map((symbol) => symbol.containerName)).toEqual([
+        `${basename(root)}/a.placitum`,
+        `${basename(other)}/b.placitum`,
+      ]);
+    } finally {
+      rmSync(other, { recursive: true, force: true });
+    }
   });
 
   it('returns nothing for missing roots', () => {

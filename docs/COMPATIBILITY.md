@@ -16,6 +16,7 @@ enough to be useful. Everything else degrades gracefully:
 | Feature | Client capability that enables it | Behavior without it | Verified by |
 |---|---|---|---|
 | Diagnostics (push) | `textDocument.publishDiagnostics` | Still analyzed; the server just publishes | `diagnostics.test.ts` |
+| Diagnostics (pull) | `textDocument.diagnostic` (LSP 3.17) | No `diagnosticProvider` is advertised; push covers the client | `compatibility.test.ts` |
 | Incremental sync | `textDocument.sync` | The server declares `change: 2`; full-text `didChange` also works | `lifecycle.test.ts` |
 | Settings | `workspace.configuration` | `initializationOptions.placitum` or defaults; no config request is sent | `compatibility.test.ts` |
 | Watched-file invalidation | `workspace.didChangeWatchedFiles.dynamicRegistration` | No registration; workspace-symbol cache invalidates on the next scan (mtime) | `compatibility.test.ts` |
@@ -23,8 +24,8 @@ enough to be useful. Everything else degrades gracefully:
 | Hover | `textDocument.hover.contentFormat` | Plain-text string instead of `MarkupContent` | `intelligence.test.ts` |
 | Completion | `textDocument.completion.completionItem.snippetSupport` / `documentationFormat` | Plain `label`/`textEdit`, plain-text docs; snippets are never inserted as literal `${1}` | `compatibility.test.ts` |
 | Document symbols | `textDocument.documentSymbol.hierarchicalDocumentSymbolSupport` | Flat `SymbolInformation[]` with `containerName` | `compatibility.test.ts` |
-| Workspace symbols | none (provider is static) | No root/folders → `[]`; no index is ever built | `compatibility.test.ts` |
-| Semantic tokens | `textDocument.semanticTokens` | Client keeps its own highlighting | `semantic-tokens` golden |
+| Workspace symbols | none (provider is static) | No root/folders → `[]`; no index is ever built; `workspace/didChangeWorkspaceFolders` rescans added/removed folders | `compatibility.test.ts` |
+| Semantic tokens | `textDocument.semanticTokens` | Client keeps its own highlighting; delta requests without a matching `resultId` get a full response | `semantic-tokens` golden |
 | Folding / selection / highlights | respective client capabilities | Features simply not requested | `intelligence.test.ts` |
 | Quick fixes | `textDocument.codeAction.codeActionLiteralSupport` (universal since LSP 3.8) | A pre-3.8 client would receive `CodeAction` objects it cannot apply; use a client from this decade | `capabilities.test.ts` |
 | Code lens / inlay hints | `textDocument.codeLens` / `textDocument.inlayHints` | Features not requested; config defaults keep inlay hints off | `capabilities.test.ts` |
@@ -69,7 +70,11 @@ coc.nvim have no headless test surface here and remain unverified.
   plain-text selector); the LSP package does not consume semantic tokens.
 - **UTF-16 only**: positions in every response use UTF-16 code units, matching
   the core spans. Emoji count as 2.
-- **Pull diagnostics** are not implemented; the server pushes. Clients that only
-  support pull (none of the above) would see no diagnostics.
+- **Pull diagnostics** are offered only to clients that declare
+  `textDocument.diagnostic`; the rest keep the push model. If a client supports
+  both, it decides which one to use.
+- **Semantic token deltas** are advertised as `full: { delta: true }`; the first
+  request per document version is always full, deltas only follow a matching
+  `resultId`.
 - **Single root**: workspace symbols scan the provided roots; multi-root folders
   are all scanned, but the response is not filtered per folder.
