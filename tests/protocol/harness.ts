@@ -11,7 +11,11 @@ import { createServer } from '../../src/server.js';
 
 export interface TestClient {
   connection: Connection;
-  initialize(capabilities?: ClientCapabilities, initializationOptions?: unknown): Promise<InitializeResult>;
+  initialize(
+    capabilities?: ClientCapabilities,
+    initializationOptions?: unknown,
+    rootUri?: string | null,
+  ): Promise<InitializeResult>;
   dispose(): void;
 }
 
@@ -25,10 +29,14 @@ export function createTestClient(): TestClient {
   connection.listen();
   return {
     connection,
-    async initialize(capabilities: ClientCapabilities = {}, initializationOptions?: unknown): Promise<InitializeResult> {
+    async initialize(
+      capabilities: ClientCapabilities = {},
+      initializationOptions?: unknown,
+      rootUri: string | null = null,
+    ): Promise<InitializeResult> {
       const result = await connection.sendRequest<InitializeResult>('initialize', {
         processId: null,
-        rootUri: null,
+        rootUri,
         capabilities,
         initializationOptions,
       });

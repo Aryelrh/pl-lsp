@@ -13,17 +13,20 @@ and exposes it over JSON-RPC on stdio, so any spec-compliant editor works.
 
 ## Status
 
-Phases 0–2 complete. The repository scaffold is in place (strict TypeScript, ESLint
+Phases 0–3 complete. The repository scaffold is in place (strict TypeScript, ESLint
 import boundaries, dependency allow-list, pinned core `placitum`), and the server runs
 over stdio: lifecycle, incremental document sync, per-version analysis cache, debounced
 push diagnostics, `workspace/configuration` + `initializationOptions` settings, and
 stderr-only logging. Diagnostics cover the core pipeline (`E1xx`–`E3xx`, tolerant
 multi-error lexing) plus the LSP analysis engine: binder `E500`/`E506`, `#!strict` `E505`,
 and definitely-certain literal checks `E501`–`E504`, each with exact UTF-16 ranges and
-config gates (`diagnostics.scope`, `diagnostics.strictChecks`, `diagnostics.literalTypes`).
-`npm run ci` is green (typecheck, lint, build, 132 unit/protocol/e2e tests, including a
-stdout-purity check). Navigation and intelligence features land in phases 3–5 following
-the directive.
+config gates. Navigation is live: definition / type definition (`LocationLink` or
+`Location` per client), references, scope-aware rename (binder occurrences only, collision
+and keyword validation), document symbols (hierarchical or flat), and capped on-demand
+workspace symbols with an mtime cache and watched-file invalidation.
+`npm run ci` is green (typecheck, lint, build, 168 unit/protocol/e2e tests, including a
+stdout-purity check and a Neovim rename E2E). Intelligence features land in phases 4–5
+following the directive.
 
 ## Features
 

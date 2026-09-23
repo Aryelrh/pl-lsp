@@ -62,6 +62,15 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Locate a declared name: word-bounded first match at or after `offset`. */
+export function nameSpanIn(source: string, offset: number, name: string): [number, number] {
+  const pattern = new RegExp(`\\b${escapeRegExp(name)}\\b`);
+  const match = pattern.exec(source.slice(offset));
+  if (match === null) return [offset, offset];
+  const start = offset + match.index;
+  return [start, start + name.length];
+}
+
 class Binder {
   private readonly scopes: Scope[] = [];
   private readonly bindings: Binding[] = [];
@@ -124,12 +133,7 @@ class Binder {
 
   /** Locate the declared name inside a declaration: word-bounded first match after the keyword. */
   private nameSpanAfter(offset: number, name: string): [number, number] {
-    const pattern = new RegExp(`\\b${escapeRegExp(name)}\\b`);
-    const rest = this.source.slice(offset);
-    const match = pattern.exec(rest);
-    if (match === null) return [offset, offset];
-    const start = offset + match.index;
-    return [start, start + name.length];
+    return nameSpanIn(this.source, offset, name);
   }
 
   private walkScope(statements: Statement[], scope: Scope): void {
@@ -248,7 +252,7 @@ class Binder {
         this.walkExpr(expr.value, scope, exclude);
         const binding = this.resolve(expr.id, scope);
         if (binding === undefined) this.unboundAssign(expr.id, expr.span);
-        else this.occurrences.push({ span: tuple(expr.span), binding: binding.id, mode: 'write' });
+        else this.occurrences.push({ span: this.nameSpanAfter(expr.span[0], expr.id), binding: binding.id, mode: 'write' });
         return;
       }
       case 'BangCall': {
@@ -349,4 +353,28 @@ class Binder {
 
 export function bind(program: Program, source: string): BinderResult {
   return new Binder(source).run(program);
+}
+
+export interface BindingHit {
+  binding: Binding;
+  occurrence: Occurrence | null;
+  /** Span of the identifier under the cursor (occurrence span or declaration name). */
+  span: [number, number];
+}
+
+/** Resolve the binding/occurrence at a UTF-16 offset; declarations match by name span. */
+export function bindingAt(result: BinderResult, offset: number): BindingHit | null {
+  const byId = new Map(result.bindings.map((binding) => [binding.id, binding]));
+  for (const occurrence of result.occurrences) {
+    if (offset >= occurrence.span[0] && offset < occurrence.span[1]) {
+      const binding = byId.get(occurrence.binding);
+      if (binding !== undefined) return { binding, occurrence, span: [occurrence.span[0], occurrence.span[1]] };
+    }
+  }
+  for (const binding of result.bindings) {
+    if (offset >= binding.nameSpan[0] && offset < binding.nameSpan[1]) {
+      return { binding, occurrence: null, span: [binding.nameSpan[0], binding.nameSpan[1]] };
+    }
+  }
+  return null;
 }
