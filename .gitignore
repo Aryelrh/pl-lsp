@@ -3,3 +3,4 @@ opencode.json
 node_modules
 dist
 .direnv/
+playground/

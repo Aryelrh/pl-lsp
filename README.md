@@ -13,7 +13,7 @@ and exposes it over JSON-RPC on stdio, so any spec-compliant editor works.
 
 ## Status
 
-Phases 0–3 complete. The repository scaffold is in place (strict TypeScript, ESLint
+Phases 0–4 complete. The repository scaffold is in place (strict TypeScript, ESLint
 import boundaries, dependency allow-list, pinned core `placitum`), and the server runs
 over stdio: lifecycle, incremental document sync, per-version analysis cache, debounced
 push diagnostics, `workspace/configuration` + `initializationOptions` settings, and
@@ -21,12 +21,15 @@ stderr-only logging. Diagnostics cover the core pipeline (`E1xx`–`E3xx`, toler
 multi-error lexing) plus the LSP analysis engine: binder `E500`/`E506`, `#!strict` `E505`,
 and definitely-certain literal checks `E501`–`E504`, each with exact UTF-16 ranges and
 config gates. Navigation is live: definition / type definition (`LocationLink` or
-`Location` per client), references, scope-aware rename (binder occurrences only, collision
-and keyword validation), document symbols (hierarchical or flat), and capped on-demand
-workspace symbols with an mtime cache and watched-file invalidation.
-`npm run ci` is green (typecheck, lint, build, 168 unit/protocol/e2e tests, including a
-stdout-purity check and a Neovim rename E2E). Intelligence features land in phases 4–5
-following the directive.
+`Location` per client), references, scope-aware rename, document symbols (hierarchical or
+flat), and capped on-demand workspace symbols with an mtime cache and watched-file
+invalidation. Intelligence is live too: context-aware completion, hover (bindings,
+builtins, members, bang coverage, capability tokens, keywords), signature help (with pipe
+prepend), full semantic tokens, folding, selection ranges and document highlights — all
+with fallbacks that keep working on half-typed files.
+`npm run ci` is green (typecheck, lint, build, 210 unit/protocol/e2e tests, including a
+stdout-purity check and Neovim E2E for rename, completion and hover). Capability UX lands
+in phase 5 following the directive.
 
 ## Features
 
@@ -220,6 +223,10 @@ npm run ci        # check-deps -> tsc --noEmit -> eslint -> build -> vitest -> e
 npm test          # vitest run
 ```
 
+For manual testing there is a git-ignored `playground/` (Zed project settings that
+redirect a built-in language server to `placitum-lsp`, an isolated Neovim launcher, and
+demo files for clean/error/syntax cases); see `playground/README.md`.
+
 Layout (target, per directive):
 
 ```
@@ -237,7 +244,8 @@ src/
                       inlay-hints, manifest-command
 editors/              ready-to-copy client recipes
 tests/                unit/ , protocol/ , fixtures/ , e2e/
-docs/                 VSCODE-HANDOFF.md, CORE-VERSION.md, BLOCKED.md
+docs/                 PHASES.md (bitácora por fase), VSCODE-HANDOFF.md,
+                      CORE-VERSION.md, BLOCKED.md
 ```
 
 Rules that make the server safe and portable:

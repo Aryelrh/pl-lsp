@@ -2,6 +2,7 @@
 import { fileURLToPath } from 'node:url';
 import {
   DidChangeWatchedFilesNotification,
+  MarkupKind,
   ResponseError,
   TextDocumentSyncKind,
   type ClientCapabilities,
@@ -15,9 +16,16 @@ import { DEFAULT_CONFIG, resolveConfig, type PlacitumConfig } from './config.js'
 import { Documents } from './documents.js';
 import type { Logger } from './log.js';
 import type { Analysis } from './analysis/model.js';
+import { completeAt } from './features/completion.js';
 import { definitionAt, typeDefinitionAt, type DefinitionTarget } from './features/definition.js';
+import { foldingRanges } from './features/folding.js';
+import { highlightsAt } from './features/highlights.js';
+import { hoverAt } from './features/hover.js';
 import { referencesAt } from './features/references.js';
 import { prepareRenameAt, renameAt } from './features/rename.js';
+import { selectionRanges } from './features/selection.js';
+import { semanticTokens, TOKEN_MODIFIERS, TOKEN_TYPES } from './features/semantic-tokens.js';
+import { signatureHelpAt } from './features/signature.js';
 import { documentSymbols } from './features/symbols.js';
 import { WorkspaceIndex } from './workspace/files.js';
 import { VERSION } from './version.js';
@@ -50,6 +58,16 @@ function initializeResult(): InitializeResult {
       renameProvider: { prepareProvider: true },
       documentSymbolProvider: true,
       workspaceSymbolProvider: true,
+      completionProvider: { triggerCharacters: ['.', '|', ' '], resolveProvider: false },
+      hoverProvider: true,
+      signatureHelpProvider: { triggerCharacters: ['(', ','] },
+      documentHighlightProvider: true,
+      foldingRangeProvider: true,
+      selectionRangeProvider: true,
+      semanticTokensProvider: {
+        legend: { tokenTypes: [...TOKEN_TYPES], tokenModifiers: [...TOKEN_MODIFIERS] },
+        full: true,
+      },
     },
     serverInfo: { name: 'placitum-lsp', version: VERSION },
   };
@@ -218,6 +236,73 @@ export function createServer(connection: Connection, options: ServerOptions): vo
       if (!config.workspaceSymbols.enable) return [];
       if (workspaceIndex === null) workspaceIndex = new WorkspaceIndex(roots, config.workspaceSymbols.maxFiles, log);
       return workspaceIndex.query(params.query);
+    }),
+  );
+
+  connection.onCompletion((params) =>
+    respond(log, 'completion', null, () => {
+      if (!config.completion.enable) return null;
+      const analysis = analysisAt(params.textDocument.uri);
+      if (analysis === undefined) return null;
+      const markdown = capabilities?.textDocument?.completion?.completionItem?.documentationFormat?.includes(MarkupKind.Markdown) === true;
+      return completeAt(analysis, analysis.document.offsetAt(params.position), {
+        snippets: config.completion.snippets,
+        markdown,
+      });
+    }),
+  );
+
+  connection.onHover((params) =>
+    respond(log, 'hover', null, () => {
+      const analysis = analysisAt(params.textDocument.uri);
+      if (analysis === undefined) return null;
+      const info = hoverAt(analysis, analysis.document.offsetAt(params.position));
+      if (info === null) return null;
+      const markdown = capabilities?.textDocument?.hover?.contentFormat?.includes(MarkupKind.Markdown) === true;
+      return {
+        contents: markdown ? { kind: MarkupKind.Markdown, value: info.value } : info.value,
+        range: info.range,
+      };
+    }),
+  );
+
+  connection.onSignatureHelp((params) =>
+    respond(log, 'signatureHelp', null, () => {
+      const analysis = analysisAt(params.textDocument.uri);
+      if (analysis === undefined) return null;
+      return signatureHelpAt(analysis, analysis.document.offsetAt(params.position));
+    }),
+  );
+
+  connection.onDocumentHighlight((params) =>
+    respond(log, 'documentHighlight', [], () => {
+      const analysis = analysisAt(params.textDocument.uri);
+      if (analysis === undefined) return [];
+      return highlightsAt(analysis, analysis.document.offsetAt(params.position));
+    }),
+  );
+
+  connection.onFoldingRanges((params) =>
+    respond(log, 'foldingRange', [], () => {
+      const analysis = analysisAt(params.textDocument.uri);
+      if (analysis === undefined) return [];
+      return foldingRanges(analysis);
+    }),
+  );
+
+  connection.onSelectionRanges((params) =>
+    respond(log, 'selectionRange', [], () => {
+      const analysis = analysisAt(params.textDocument.uri);
+      if (analysis === undefined) return [];
+      return selectionRanges(analysis, params.positions);
+    }),
+  );
+
+  connection.languages.semanticTokens.on((params) =>
+    respond(log, 'semanticTokens', { data: [] }, () => {
+      const analysis = analysisAt(params.textDocument.uri);
+      if (analysis === undefined) return { data: [] };
+      return semanticTokens(analysis);
     }),
   );
 

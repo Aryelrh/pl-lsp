@@ -4,7 +4,7 @@
  * declarations are visible to the whole scope (closures resolve at call time),
  * except a `let`'s own name, which is not visible in its initializer.
  */
-import type { Expr, FnDecl, ForStmt, LetStmt, Param, Program, Statement } from './core-adapter.js';
+import type { Expr, FnDecl, ForStmt, Identifier, LetStmt, Param, Program, Statement } from './core-adapter.js';
 import { JSON_NAMESPACE_TYPE, inferType, unknownType, type TypeInfo } from './types.js';
 
 export type ScopeKind = 'program' | 'fn' | 'block' | 'for-loop';
@@ -377,4 +377,41 @@ export function bindingAt(result: BinderResult, offset: number): BindingHit | nu
     }
   }
   return null;
+}
+
+/** Innermost scope containing the offset. */
+export function scopeAt(result: BinderResult, offset: number): Scope | undefined {
+  let best: Scope | undefined;
+  for (const scope of result.scopes) {
+    if (offset < scope.span[0] || offset >= scope.span[1]) continue;
+    if (best === undefined || scope.span[1] - scope.span[0] < best.span[1] - best.span[0]) best = scope;
+  }
+  return best;
+}
+
+/** Bindings visible at an offset; the nearest declaration per name wins. */
+export function visibleBindings(result: BinderResult, offset: number): Binding[] {
+  const byName = new Map<string, Binding>();
+  let current = scopeAt(result, offset);
+  while (current !== undefined) {
+    for (const binding of current.declarations) {
+      if (!byName.has(binding.name)) byName.set(binding.name, binding);
+    }
+    current = current.parent === null ? undefined : result.scopes[current.parent];
+  }
+  return [...byName.values()];
+}
+
+/** Type resolver backed by the binder's occurrences (works for any AST node). */
+export function typeResolver(result: BinderResult): (name: string, node: Identifier) => TypeInfo | undefined {
+  const occurrences = new Map(result.occurrences.map((occurrence) => [occurrence.span[0], occurrence]));
+  const bindings = new Map(result.bindings.map((binding) => [binding.id, binding]));
+  return (_name, node) => {
+    const occurrence = occurrences.get(node.span[0]);
+    return occurrence === undefined ? undefined : bindings.get(occurrence.binding)?.type;
+  };
+}
+
+export function isWritten(result: BinderResult, bindingId: number): boolean {
+  return result.occurrences.some((occurrence) => occurrence.binding === bindingId && occurrence.mode === 'write');
 }

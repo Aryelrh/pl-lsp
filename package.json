@@ -23,7 +23,7 @@
     "check-deps": "node scripts/check-deps.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/bin.js', 0o755)\"",
     "test": "vitest run",
     "ci": "npm run check-deps && npm run typecheck && npm run lint && npm run build && npm run test"
   },
