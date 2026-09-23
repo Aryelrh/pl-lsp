@@ -264,8 +264,9 @@ export function createServer(connection: Connection, options: ServerOptions): vo
       const analysis = analysisAt(params.textDocument.uri);
       if (analysis === undefined) return null;
       const markdown = capabilities?.textDocument?.completion?.completionItem?.documentationFormat?.includes(MarkupKind.Markdown) === true;
+      const snippetSupport = capabilities?.textDocument?.completion?.completionItem?.snippetSupport === true;
       return completeAt(analysis, analysis.document.offsetAt(params.position), {
-        snippets: config.completion.snippets,
+        snippets: config.completion.snippets && snippetSupport,
         markdown,
       });
     }),

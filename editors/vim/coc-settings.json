@@ -1,0 +1,10 @@
+{
+  "languageserver": {
+    "placitum": {
+      "command": "placitum-lsp",
+      "args": ["--stdio"],
+      "filetypes": ["placitum"],
+      "rootPatterns": [".git"]
+    }
+  }
+}

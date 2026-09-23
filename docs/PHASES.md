@@ -6,7 +6,7 @@ conceptos hay detrás**. Se actualiza al cerrar cada fase del plan de referencia
 el código, los mensajes y la documentación de producto van en inglés, como exige la
 directiva.
 
-- Estado actual: **Fases 0–5 completas** · `npm run ci` verde (246 tests)
+- Estado actual: **Fases 0–6 completas** · `npm run ci` verde (262 tests)
 - Cómo leer: cada fase tiene *Objetivo → Conceptos → Qué se construyó → Decisiones y
   límites → Tests y gate → Cómo probarlo a mano*.
 
@@ -467,18 +467,72 @@ escaping).
 
 ---
 
-## Fase 6 — Compatibilidad (pendiente)
+## Fase 6 — Compatibilidad
 
-**Estado:**  no iniciada.
+**Estado:**  completada (la verificación manual en editores no instalados queda
+documentada como pendiente, no simulada).
 
-**Qué hará.** Verificar y ajustar el comportamiento con clientes mínimos: fallbacks de
-símbolos planos, hover en texto plano, sin registro dinámico, `rootUri` null, utf-16,
-MethodNotFound; completar `editors/` con recetas para Neovim, Helix, Emacs, Zed,
-Sublime, Vim y Kate, más `docs/COMPATIBILITY.md` y el E2E completo de Neovim.
+### Objetivo
 
-**Conceptos que se van a tocar.** Matriz de compatibilidad capability-por-capability;
-degradación elegante (cada feature es opcional); límites honestos por editor (Helix y
-Zed necesitan grammar tree-sitter para highlighting).
+Garantizar que el server sea útil con el cliente más pobre posible y dejar recetas
+copy-paste por editor, con una matriz de compatibilidad honesta.
+
+### Conceptos
+
+- **Contrato mínimo.** `initialize` + `didOpen`/`didChange`/`didClose` +
+  `publishDiagnostics` alcanzan; el resto es opcional y se degrada. El server
+  declara `positionEncoding: utf-16` y nunca negocia otra codificación.
+- **Fallbacks capability-por-capability.** Sin `linkSupport` → `Location[]`; sin
+  `hierarchicalDocumentSymbolSupport` → `SymbolInformation[]` con
+  `containerName`; sin `contentFormat` → hover string; sin
+  `workspace.configuration` → `initializationOptions`/defaults (no se manda el
+  request); sin `dynamicRegistration` → no se registra el watcher; sin root →
+  `workspace/symbol` devuelve `[]`; request desconocido → `MethodNotFound`
+  (-32601) sin tumbar la conexión.
+- **UTF-16 como contrato duro.** Un emoji cuenta 2 unidades; el test de
+  compatibilidad fija el rango de un E500 después de un astral.
+- **Matriz de editores.** `docs/COMPATIBILITY.md` cruza feature × cliente y
+  `docs/EDITOR-CHECKLIST.md` registra fecha + versión por cliente. Neovim está
+  automatizado; el resto queda `pending` con los pasos exactos, sin inventar
+  resultados.
+- **Recetas lint-checked.** JSON con `JSON.parse`, Lua con `loadfile` de Neovim
+  (`nvim --headless -u NONE`), TOML con un chequeo estructural (en esta máquina
+  no hay parser TOML) y elisp sin tooling disponible (revisado a mano).
+- **E2E por la receta real.** El E2E de Neovim usa
+  `nvim -u editors/neovim/init.lua` con un shim de `placitum-lsp` en `PATH`, así
+  que prueba la receta publicada, no una configuración ad-hoc.
+
+### Qué se construyó
+
+| Archivo | Responsabilidad |
+|---|---|
+| `tests/protocol/compatibility.test.ts` | Cliente mínimo, fallbacks, no-registration, root null, config, UTF-16. |
+| `tests/e2e/neovim.test.ts` | E2E con la receta: rename, completion+hover, E301 + manifest. |
+| `tests/e2e/recipes.test.ts` | Lint de recetas (JSON/Lua/TOML) + tabla del README. |
+| `editors/neovim/` | `init.lua` (0.11+) y `nvim-lspconfig.lua` (0.10). |
+| `editors/{helix,emacs,zed,sublime,vim,kate}/` | Recetas copy-paste por cliente. |
+| `editors/README.md` | Tabla cliente → receta → versión → ¿automatizado? + checklist. |
+| `docs/COMPATIBILITY.md` | Matriz capability-por-capability y por editor, con límites. |
+| `docs/EDITOR-CHECKLIST.md` | Registro manual por cliente (fecha + versión). |
+
+### Decisiones y límites
+
+- La verificación manual en Helix, Emacs, Zed, Sublime, Vim (plugins) y Kate no
+  se ejecutó: esos clientes no están instalados en la máquina de desarrollo. Queda
+  registrada como `pending` en `docs/EDITOR-CHECKLIST.md` con los pasos exactos;
+  no se reportó como verificada.
+- Los quick fixes requieren `codeActionLiteralSupport` (universal desde LSP 3.8);
+  no se agrega el fallback a `Command[]` porque un `Command` no puede transportar
+  el `WorkspaceEdit`.
+- Sublime (paquete LSP) no consume semantic tokens y Kate no los pide: la matriz
+  lo dice explícitamente en vez de asumir paridad.
+- Helix y Zed necesitan un grammar tree-sitter para highlighting; las features
+  LSP no dependen de él.
+
+### Gate
+
+Matriz en `docs/COMPATIBILITY.md` + checklist por editor; todas las recetas
+lint-checked; E2E de Neovim (incluida la receta) verde.
 
 ---
 

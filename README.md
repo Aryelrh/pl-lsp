@@ -13,7 +13,7 @@ and exposes it over JSON-RPC on stdio, so any spec-compliant editor works.
 
 ## Status
 
-Phases 0–5 complete. The repository scaffold is in place (strict TypeScript, ESLint
+Phases 0–6 complete. The repository scaffold is in place (strict TypeScript, ESLint
 import boundaries, dependency allow-list, pinned core `placitum`), and the server runs
 over stdio: lifecycle, incremental document sync, per-version analysis cache, debounced
 push diagnostics, `workspace/configuration` + `initializationOptions` settings, and
@@ -31,8 +31,13 @@ quick fixes (add `needs`, insert `}`, declare with `let`, rename redeclarations)
 over `needs` clauses, optional inlay hints, the custom `placitum/manifest` request whose
 markdown is the core `explain` output byte for byte, and the commands
 `placitum.showManifest` / `placitum.reanalyze` / `placitum.addNeeds`.
-`npm run ci` is green (typecheck, lint, build, 246 unit/protocol/e2e tests, including a
-stdout-purity check and Neovim E2E for rename, completion and hover).
+Compatibility is hardened and documented: every feature degrades per client
+capability, copy-paste recipes ship in `editors/` for Neovim, Helix, Emacs, Zed,
+Sublime, Vim and Kate, and `docs/COMPATIBILITY.md` holds the capability-by-capability
+matrix.
+`npm run ci` is green (typecheck, lint, build, 262 unit/protocol/e2e tests, including a
+stdout-purity check and Neovim E2E driving the shipped recipe for rename, completion,
+hover, diagnostics and the manifest).
 
 ## Features
 
@@ -245,10 +250,10 @@ src/
                       references, rename, symbols, semantic-tokens, folding,
                       selection, highlights, code-actions, code-lens,
                       inlay-hints, manifest-command
-editors/              ready-to-copy client recipes
+editors/              ready-to-copy client recipes (see editors/README.md)
 tests/                unit/ , protocol/ , fixtures/ , e2e/
 docs/                 PHASES.md (bitácora por fase), VSCODE-HANDOFF.md,
-                      CORE-VERSION.md, BLOCKED.md
+                      CORE-VERSION.md, COMPATIBILITY.md, EDITOR-CHECKLIST.md
 ```
 
 Rules that make the server safe and portable:
