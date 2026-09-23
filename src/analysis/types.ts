@@ -37,6 +37,29 @@ export function functionName(type: TypeInfo): string | null {
   return typeof name === 'string' ? name : null;
 }
 
+/** Short human label for hover/inlay hints. */
+export function describeType(type: TypeInfo): string {
+  switch (type.kind) {
+    case 'array':
+      return `array<${describeType(type.element)}>`;
+    case 'function':
+      return describeSignature(type) ?? 'function';
+    default:
+      return type.kind;
+  }
+}
+
+/** `fn name(a, b)` for user functions, `(string) -> string` for native ones. */
+export function describeSignature(type: TypeInfo): string | null {
+  if (type.kind !== 'function' || type.signature === null) return null;
+  const signature = type.signature;
+  if (!('ret' in signature)) {
+    const name = functionName(type);
+    return name === null ? `fn(${signature.params.join(', ')})` : `fn ${name}(${signature.params.join(', ')})`;
+  }
+  return `(${signature.params.join(', ')}) -> ${signature.ret}`;
+}
+
 function fromTypeName(name: TypeName): TypeInfo {
   switch (name) {
     case 'array':

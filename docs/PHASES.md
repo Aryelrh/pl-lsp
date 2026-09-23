@@ -1,0 +1,448 @@
+# Bitácora de fases — placitum-lsp
+
+Este documento explica, fase por fase, **qué se construyó, por qué existe y qué
+conceptos hay detrás**. Se actualiza al cerrar cada fase del plan de referencia
+(`placitum-lsp-implementation.md`). Está en español porque es material de estudio;
+el código, los mensajes y la documentación de producto van en inglés, como exige la
+directiva.
+
+- Estado actual: **Fases 0–4 completas** · `npm run ci` verde (210 tests)
+- Cómo leer: cada fase tiene *Objetivo → Conceptos → Qué se construyó → Decisiones y
+  límites → Tests y gate → Cómo probarlo a mano*.
+
+---
+
+## Glosario rápido
+
+| Término | Qué es |
+|---|---|
+| **LSP** | Language Server Protocol: protocolo estándar entre un editor (cliente) y un servidor de lenguaje. Define métodos (`textDocument/definition`, …) y notificaciones (`textDocument/publishDiagnostics`, …). |
+| **JSON-RPC** | Formato de mensajes del LSP: `{jsonrpc, id, method, params}` para requests, `{jsonrpc, id, result/error}` para responses, sin `id` para notifications. |
+| **stdio / framing** | El servidor habla por stdin/stdout. Cada mensaje va precedido por `Content-Length: N\r\n\r\n`. Por eso **stdout es sagrado**: un `console.log` lo rompe. |
+| **Capability** | (1) En LSP: lo que cliente y servidor declaran saber hacer en `initialize`. (2) En Placitum: permiso de efecto (`fs.read`, `net`, …). El contexto lo aclara. |
+| **Diagnostic** | Error/warning con rango, código, mensaje. El LSP los *empuja* (`publishDiagnostics`). |
+| **Position encoding** | Cómo se cuentan columnas. Acá siempre UTF-16 (unidades de código), igual que los spans del core. Un emoji cuenta 2. |
+| **Span** | Par `[start, end)` de offsets UTF-16 sobre el texto completo, tal como los reporta el core. |
+| **Manifest** | Resultado del extractor: qué grants (`needs`) tiene el programa y cada `fn` (`scoped`), más los chequeos diferidos a runtime (`deferredToRuntime`). |
+| **Deferred** | Un bang call cuyo argumento no es un literal: no se puede verificar estáticamente, se difiere al guard de runtime. No es error. |
+| **Binder** | Pase de análisis que resuelve scopes, declaraciones, usos (occurrences) y tipos por binding, sin ejecutar nada. |
+| **Gate** | Criterio de cierre de una fase: tests + CI verde. No se empieza la fase siguiente sin gate. |
+| **Ponytail** | Comentario en el código que marca una simplificación deliberada, su techo y el camino de mejora. |
+
+---
+
+## Fase 0 — Scaffold y contrato con el core
+
+**Estado:**  completada (gate compartido con Fase 1: 37 tests).
+
+### Objetivo
+
+Preparar el repositorio y fijar el contrato con `quesadx/pl-lg` (el intérprete de
+Placitum) para poder reutilizarlo **sin reimplementar** lexer/parser/extractor.
+
+### Conceptos
+
+- **Pipeline puro vs. ejecución.** El servidor sólo puede usar las fases puras del
+  core: `lex → parse → extract → explain` y análisis estático. Nunca el evaluador, el
+  guard ni los host bindings. Un archivo malicioso sólo puede producir diagnósticos.
+- **Adapter (`core-adapter.ts`).** Única frontera permitida con `placitum`. Aísla la
+  versión y el API: si el core cambia, se toca un solo archivo.
+- **Pin por SHA.** La dependencia es `github:quesadx/pl-lg#<sha>`; un commit inmutable
+  hace reproducibles los builds (el `prepare` del core compila `dist` al instalar).
+- **Strict TypeScript.** `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`,
+  `verbatimModuleSyntax`: obligan a manejar `undefined` y a declarar imports de tipos.
+- **Allow-list de dependencias + lint de frontera.** `scripts/check-deps.mjs` rechaza
+  paquetes fuera de la lista; ESLint prohíbe importar `placitum/*` fuera del adapter,
+  y `fs`/procesos/red fuera de `workspace/files.ts` y `log.ts`.
+- **Posiciones UTF-16.** El core reporta `line`/`col` 1-based y `span` UTF-16. El LSP
+  usa la misma codificación (`positionEncoding: utf-16`), así que la conversión es
+  directa; `positions.ts` centraliza el clamping (EOF, spans invertidos, CRLF, emojis).
+
+### Qué se construyó
+
+| Archivo | Responsabilidad |
+|---|---|
+| `package.json` | Scripts `check-deps/typecheck/lint/build/test/ci`, bin `placitum-lsp`, core pinneado. |
+| `tsconfig.json` / `tsconfig.build.json` | Strict para todo; build sólo de `src` a `dist`. |
+| `.eslintrc.json` | Fronteras de import por archivo. |
+| `scripts/check-deps.mjs` | Allow-list + pin por SHA. |
+| `src/analysis/core-adapter.ts` | `analyze()`, `strictDiagnostics()`, `signatureOf()`, tablas del core, re-export de tipos. |
+| `src/analysis/positions.ts` | Span/line/col ↔ `Range`, con clamping. |
+| `src/analysis/model.ts` | Objeto `Analysis` (todo lo derivado de una versión del documento). |
+| `tests/fixtures/rosetta.placitum` | Programa de referencia con grants, fn atenuada, pipe, curl, print. |
+| `docs/CORE-VERSION.md` | SHA + APIs requeridas y comportamiento de `analyzeSource`. |
+
+### Decisiones y límites
+
+- El core ya traía el contrato de la Fase 0 (barrel público, `analyzeSource` tolerante,
+  `collectStrictDiagnostics`, `inferType`), así que no hubo que tocar `pl-lg`.
+- `analyzeSource` corre `extract()` **sólo** si no hubo errores de lex/parse: un AST
+  recuperado nunca genera errores de capability en cascada.
+
+### Cómo verificarlo
+
+```sh
+npm run ci                     # check-deps -> typecheck -> lint -> build -> tests
+npx vitest run tests/unit/core-adapter.test.ts
+```
+
+---
+
+## Fase 1 — Servidor y diagnósticos
+
+**Estado:**  completada.
+
+### Objetivo
+
+Un servidor LSP real sobre stdio, con ciclo de vida, sincronización de documentos y
+diagnósticos del core (errores de sintaxis y capabilities) publicados al editor.
+
+### Conceptos
+
+- **Ciclo de vida LSP.** `initialize` (negociación de capabilities) → `initialized` →
+  `shutdown` → `exit`. El servidor declara `positionEncoding`, sync de documentos y
+  providers; el cliente declara qué soporta.
+- **Sincronización incremental.** `didOpen/didChange/didClose/didSave`. Con `change: 2`
+  el cliente manda sólo el fragmento editado; `TextDocuments` mantiene el texto vivo.
+- **Análisis por versión + caché.** Cada documento tiene `version`; al cambiar se
+  re-analiza y se cachea el `Analysis` de esa versión.
+- **Debounce (80 ms).** Mientras se tipea, se espera a que el usuario pause antes de
+  publicar diagnósticos: evita parpadeo y trabajo repetido.
+- **Push diagnostics.** El servidor *empuja* `textDocument/publishDiagnostics`; no hay
+  que pedirlos (pull queda fuera de alcance). Al cerrar el documento se publica `[]`.
+- **Mapeo de error a diagnóstico.** `severity` (Error), `code` completo
+  (`E301_EXTRACT_...`), `source: "placitum"`, `message` + `hint`, `data` opaco con la
+  fase y el hint para futuros quick fixes.
+- **Contención de errores.** Publicar diagnósticos nunca tumba el server; los fallos
+  se loguean y se sigue.
+- **Logs a stderr.** `--log-level` (`error|info|debug|trace`) y `--log-file`; stdout
+  sólo lleva frames. Un test e2e verifica la pureza parseando *todo* stdout.
+- **Tres niveles de test.** Unit (funciones puras), protocolo in-process (dos
+  conexiones sobre `PassThrough`, sin subproceso) y e2e (spawn del binario + framing
+  crudo). Los resultados que no cambian se congelan en **goldens** (`UPDATE_GOLDENS=1`
+  los reescribe).
+
+### Qué se construyó
+
+| Archivo | Responsabilidad |
+|---|---|
+| `src/bin.ts` | Flags CLI; rechaza `--node-ipc`/`--socket` con exit 2; arranca el server. |
+| `src/server.ts` | `initialize`, capabilities, config, shutdown, registro de handlers. |
+| `src/documents.ts` | Mapa de documentos, caché por versión, debounce, publicar/limpiar. |
+| `src/config.ts` | Settings con parseo defensivo (tipos incorrectos → default). |
+| `src/log.ts` | Logger a stderr/archivo; nunca stdout. |
+| `src/features/diagnostics.ts` | Core error → `Diagnostic` LSP. |
+| `src/analysis/model.ts` + `positions.ts` | Pipeline y conversión de rangos. |
+| `tests/protocol/harness.ts` | Cliente LSP in-process sobre streams. |
+| `tests/protocol/golden.ts` | Comparación/actualización de goldens. |
+| `tests/e2e/stdio.test.ts` | Framing crudo, pureza de stdout, `--version/--help`, transporte inválido. |
+
+### Decisiones y límites
+
+- `$/setTrace` por ahora sólo ajusta el log propio (marcado `ponytail:`); el forwarding
+  por mensaje llega cuando se active la feature de tracer de la librería.
+- Los goldens se generan con `UPDATE_GOLDENS=1`; en CI siempre se comparan.
+
+### Cómo probarlo a mano
+
+```sh
+npm run build
+node dist/bin.js --version
+# En Neovim: :LspRestart y abrir un .placitum con un E301
+```
+
+---
+
+## Fase 2 — Binder, tipos y checks estáticos
+
+**Estado:**  completada.
+
+### Objetivo
+
+Entender el programa **como el evaluador lo entiende** (sin ejecutarlo) para reportar
+errores que el core no ve: nombres sin resolver, redeclaraciones, tipos y aridades
+seguros, y el chequeo `#!strict`.
+
+### Conceptos
+
+- **Scope y binding.** Un *scope* es un conjunto de nombres visibles (programa, fn,
+  bloque, loop). Un *binding* es una declaración (`let`, `fn`, `param`, `iterator`,
+  `builtin json`). Un *occurrence* es un uso: lectura o escritura (`x = 1`).
+- **Pre-declaración (hoisting).** Las declaraciones de un scope se registran antes de
+  recorrerlo: las closures resuelven nombres en tiempo de llamada, por eso
+  `let y = z` seguido de `let z = 1` **no** es error. Excepción: el nombre de un `let`
+  no es visible en su propio inicializador (`let x = x` → E500 si no hay un `x` externo).
+- **E500 / E506.** E500: nombre no resoluble (lectura o asignación). E506:
+  redeclaración en el mismo scope (incluye chocar con el builtin `json` y con params).
+  Mensajes y hints son idénticos al core; hay fixtures eval-negativos copiados del repo
+  core que lo prueban.
+- **`TypeInfo`.** Inferencia best-effort: literales, arrays (elemento si es uniforme),
+  objetos, namespace `json`, firmas de bangs (`fs.readFile! → string`, `curl! →
+  {status, body}`), resultado de pipes. `unknown` se propaga y **nunca** se usa para
+  reportar un error.
+- **Checks "definitely-certain".** Sólo se reporta lo que falla en todo camino posible:
+  literales incompatibles (`1 + "a"`), member sobre escalar, `json.parse` no-string,
+  `for` sobre no-array, callee no invocable, aridad de fn/stdlib/bang (contando el
+  valor que el pipe antepone), división por cero literal. Si hay duda, silencio.
+- **E505 (`#!strict`).** Pre-pase del core que valida tipos de cadena de pipes. El
+  pragma lo habilita; sin él, el colector devuelve vacío.
+- **Capabilities del lenguaje.** El extractor produce el manifest: grants por categoría
+  (`net`, `fsRead`, `fsWrite`, `exec`, `env`), manifests atenuados por fn (`scoped`),
+  y `deferredToRuntime`. `capabilities.ts` responde: manifest efectivo en un offset,
+  estado de un bang (`ambient`/`statically-covered`/`deferred`/`unknown`), grants crudos.
+- **Gates de configuración.** `diagnostics.scope` (E500/E506), `strictChecks` (E505),
+  `literalTypes` (E501–E504); se pueden apagar por separado.
+- **Recuperación de parse.** Si hubo error de parse, el AST puede existir pero está
+  incompleto: no se corren checks semánticos (evita cascadas).
+
+### Qué se construyó
+
+| Archivo | Responsabilidad |
+|---|---|
+| `src/analysis/binder.ts` | Scopes, bindings, occurrences, tipos, `bindingAt`, `nameSpanIn`. |
+| `src/analysis/types.ts` | `TypeInfo` e `inferType` con resolver de nombres. |
+| `src/analysis/checks.ts` | E501–E504 con mensajes del core. |
+| `src/analysis/capabilities.ts` | Consultas sobre el manifest. |
+| `src/analysis/comments.ts` | Trivia de comentarios (fallback por gaps de tokens). |
+| `src/analysis/model.ts` | Ensambla binder/checks/strict/capabilities por documento. |
+| `src/features/diagnostics.ts` | Une core + binder + checks, ordena por offset y aplica gates. |
+| `tests/fixtures/binder/` | Fixtures eval-negativos copiados del core (E500/E506). |
+
+### Decisiones y límites
+
+- Los tipos son **por binding**, no flow-sensitive: `let x = 1; x = "a"` no re-tipa `x`
+  (marcado `ponytail:`).
+- La ocurrencia de escritura abarca sólo el identificador (`x`), no `x = 2`, para que
+  rename/references sean correctos.
+
+### Cómo probarlo a mano
+
+```sh
+# Un archivo con: let x = 1 / let x = 2 / let copy = missing_name / let s = 1 + "a"
+# Deben aparecer E506, E500 y E501 con rangos exactos.
+```
+
+---
+
+## Fase 3 — Navegación
+
+**Estado:**  completada.
+
+### Objetivo
+
+Ir al origen de un nombre, listar usos, renombrar con seguridad y explorar símbolos
+(documento y workspace).
+
+### Conceptos
+
+- **Definition vs. LocationLink.** `Location` es `{uri, range}`. `LocationLink` agrega
+  `originSelectionRange` (lo que el usuario tenía bajo el cursor) y
+  `targetSelectionRange` (el identificador destino, no toda la declaración). Si el
+  cliente no soporta links, se devuelve `Location[]`.
+- **Type definition.** Para bindings de usuario apunta a la declaración; para builtins
+  (`json`) no hay archivo destino → `null`.
+- **References.** Todas las occurrences del binding resuelto (lecturas y escrituras),
+  más la declaración si el cliente pide `includeDeclaration`. Es single-file: Placitum
+  no tiene módulos.
+- **Rename scope-aware.** Se calculan los edits **desde el binder**, nunca por texto:
+  renombrar un `x` interno no toca el `x` externo. `prepareRename` valida y devuelve el
+  rango + placeholder; `rename` valida el nombre (`^[A-Za-z_][A-Za-z0-9_]*$`), rechaza
+  keywords, colisiones en el mismo scope (mensaje E506) y nombres reservados. Los
+  errores viajan como `ResponseError` para que el editor los muestre.
+- **WorkspaceEdit.** Los cambios se devuelven como `{changes: {uri: TextEdit[]}}`; el
+  servidor **nunca** escribe archivos.
+- **DocumentSymbol vs SymbolInformation.** Jerárquico (`children`) si el cliente lo
+  soporta; si no, lista plana con `containerName`. Kinds: `Namespace` (needs),
+  `Function` (fn), `Variable` (let/param/iterador), `Property` (tokens de capability).
+- **Workspace symbols sin índice persistente.** Se escanea `**/*.placitum` bajo los
+  roots **on demand**, con cap (`maxFiles`), salteando `node_modules` y directorios
+  ocultos, y caché por URI+mtime. Archivos a medio tipear caen a un regex de línea.
+- **Registro dinámico de watchers.** Sólo si el cliente lo declara, se registra
+  `workspace/didChangeWatchedFiles` para `**/*.placitum`; al notificar cambios se
+  invalida la caché. Sin roots (`rootUri` null) → `[]`.
+
+### Qué se construyó
+
+| Archivo | Responsabilidad |
+|---|---|
+| `src/features/definition.ts` | Definition/typeDefinition, links, propiedades de objetos literales. |
+| `src/features/references.ts` | Locations de un binding. |
+| `src/features/rename.ts` | prepare + rename con validaciones. |
+| `src/features/symbols.ts` | Árbol de símbolos, flat, y extracción para workspace. |
+| `src/workspace/files.ts` | Único lector de fs: scan con cap + caché mtime. |
+| `src/server.ts` | Providers, `LocationLink` según capability, watcher e invalidación. |
+| `tests/e2e/neovim.test.ts` | Rename real en Neovim headless (sombreado, sin corromper). |
+
+### Decisiones y límites
+
+- Definition de propiedades de objeto soporta sólo receptores que son bindings con
+  inicializador de objeto literal (`ponytail:`: shapes encadenadas necesitarían
+  guardar el origen de cada propiedad en `TypeInfo`).
+- Los símbolos de bloques anidados se aplanan al símbolo contenedor más cercano (o al
+  top level); el criterio es estable y está documentado en el código.
+- El rename E2E usa la API actual de Neovim (`client:request`), no la deprecada.
+
+### Cómo probarlo a mano
+
+```sh
+# Neovim: pararse en un nombre y usar gd / gr / <F2>; :lua =vim.lsp.buf.document_symbol()
+# Zed: command palette -> "go to definition", "rename symbol", "document symbols".
+```
+
+---
+
+## Fase 4 — Inteligencia
+
+**Estado:**  completada.
+
+### Objetivo
+
+Hacer que el editor "entienda" el archivo mientras se escribe: completar, explicar con
+hover, firmas, coloreado semántico, plegado, selección por rangos y resaltado de usos.
+
+### Conceptos
+
+- **Completion por contexto.** No hay una lista única: primero se clasifica dónde está
+  el cursor (pragma, línea de `needs`, después de `fs.`, dentro de `only(`, dentro de
+  `env(`, después de un `.`, después de `|`, o posición general) y recién ahí se eligen
+  candidatos. El `!` de los bang calls no va en el `label`/`filterText` (rompería el
+  filtrado) pero sí en el `insertText` como snippet (`fs.readFile!(${1})`).
+  `sortText` ordena: `0` prefijo exacto o stage de pipe compatible, `1` locales,
+  `2` builtins/keywords, `3` snippets. El `textEdit` reemplaza sólo el identificador
+  parcial, nunca otro texto.
+- **Hover.** Se devuelve `MarkupContent` (markdown) si el cliente lo declara; si no,
+  texto plano. Los casos: bindings (tipo inferido + línea de declaración; para `fn`,
+  firma y grants efectivos), `json`, propiedades de objetos, bang calls (cubierto /
+  diferido / ambient con el grant que lo cubre), tokens de capability (categoría, uso,
+  y grants del padre para `only(...)`), keywords y el pragma.
+- **Signature help.** Se busca el paréntesis abierto más interno con una pila sobre el
+  stream de tokens, se cuentan las comas de nivel 0 hasta el cursor (parámetro activo)
+  y se resuelve el callee: fn de usuario visible → `BANG_SIGNATURES` → `PURE_SIGNATURES`.
+  En un stage de pipe se antepone el parámetro `piped` porque en runtime el valor
+  entrante es el argumento 0.
+- **Semantic tokens.** La leyenda está congelada (`tokenTypes`/`tokenModifiers`). La
+  clasificación prioriza spans del AST (bindings con `declaration`/`readonly`/
+  `defaultLibrary`, usos, `modification` en escrituras, claves de objeto, `json.parse`,
+  bang targets enteros) y cae al tipo de token para lo demás (keywords, strings,
+  números, operadores, identificadores de `needs`). Los tokens adyacentes iguales se
+  fusionan y se emiten como deltas ordenados, sin solapamientos.
+- **Folding.** Rangos `region` para bloques y literales multilínea, `comment` para runs
+  de comentarios, y un `region` por grupo de `needs` consecutivos. Si el parse falla,
+  fallback de matching de llaves sobre tokens.
+- **Selection ranges.** Cadena de ancestros del AST que contiene la posición
+  (token → expresión → statement → bloque → fn → programa), con fallback token → línea
+  → documento.
+- **Highlights.** Ocurrencias del binding bajo el cursor: `Read` por defecto, `Write`
+  para destinos de asignación; nada para builtins ni propiedades.
+- **Parse recuperado.** Mientras se tipea, el parse suele fallar (binder `null`). Para
+  que completion/hover/signature sigan funcionando hay fallbacks: detección de la línea
+  `needs` por tokens, receiver de `.` desde el AST recuperado (o `json`), declaraciones
+  `let`/`fn` recuperadas, y firmas de stdlib/bangs que no dependen del binder.
+
+### Qué se construyó
+
+| Archivo | Responsabilidad |
+|---|---|
+| `src/features/completion.ts` | Contextos, snippets, sortText, fallbacks de parse recuperado. |
+| `src/features/hover.ts` | Bindings, builtins, miembros, bangs, capability tokens, keywords. |
+| `src/features/signature.ts` | Paréntesis activo, parámetro activo, prepend de pipe. |
+| `src/features/semantic-tokens.ts` | Leyenda, clasificación AST-first y deltas. |
+| `src/features/folding.ts` | Bloques/literales/comentarios/needs + fallback de llaves. |
+| `src/features/selection.ts` | Cadena de ancestros y fallbacks. |
+| `src/features/highlights.ts` | Reads/writes del binding. |
+| `src/analysis/walk.ts` | `collectNodes`: recorrido genérico del AST. |
+| `tests/fixtures/tokens.placitum` + golden | Fixture del golden de semantic tokens. |
+
+### Decisiones y límites
+
+- Los tokens semánticos nunca cruzan líneas (los bang targets no pueden); si un span
+  fuera multilínea se omite porque el delta no puede expresarlo.
+- El ranking de stages de pipe compara el primer parámetro con el tipo producido cuando
+  es inferible; si no, se ofrece igual sin priorizar.
+- **Helix** no está instalado en esta máquina: el check manual de completion/hover en
+  Helix queda anotado para la Fase 6 (recetas + checklist). Neovim quedó automatizado.
+
+### Cómo probarlo a mano
+
+```sh
+# Neovim: escribir "needs " y ver starters; "json." y ver parse; K sobre un binding.
+# :lua =vim.lsp.buf.signature_help() dentro de una llamada.
+# Coloreado: :set termguicolors + semantic tokens "combined" en Zed/Neovim.
+```
+
+### Gate
+
+210 tests verdes, golden de semantic tokens (comentarios, pragma, bang targets,
+identificadores de `needs`, f-strings) y E2E de Neovim con completion + hover markdown.
+
+---
+
+## Fase 5 — UX de capabilities (pendiente)
+
+**Estado:**  no iniciada.
+
+**Qué hará.** Code actions, code lens, el request custom `placitum/manifest` y los
+comandos `placitum.showManifest` / `placitum.reanalyze`, hover con cobertura/deferrals,
+e inlay hints.
+
+**Conceptos que se van a tocar.**
+
+- **Quick fixes deterministas**: insertar `needs` (calculando el token exacto, con
+  escaping), insertar `}` al EOF, renombrar ante E506; todo vía `WorkspaceEdit`.
+- **Add-needs**: leer el `NeedsDecl` existente para anexar el token, o insertar la
+  línea después del pragma; nunca duplicar grants.
+- **Code lens**: contadores de grants/deferrals sobre el `needs` y resumen de `only(...)`.
+- **Manifest**: `explain()` del core tal cual (nunca re-renderizar) para que el markdown
+  sea idéntico a `placitum explain`.
+- **Inlay hints**: tipos inferidos junto a los `let` y, opcionalmente, la cobertura de
+  cada bang call.
+
+**Gate.** Fixtures de capability verdes; el markdown de `placitum/manifest` idéntico
+byte a byte al `explain` del core para el fixture Rosetta.
+
+---
+
+## Fase 6 — Compatibilidad (pendiente)
+
+**Estado:**  no iniciada.
+
+**Qué hará.** Verificar y ajustar el comportamiento con clientes mínimos: fallbacks de
+símbolos planos, hover en texto plano, sin registro dinámico, `rootUri` null, utf-16,
+MethodNotFound; completar `editors/` con recetas para Neovim, Helix, Emacs, Zed,
+Sublime, Vim y Kate, más `docs/COMPATIBILITY.md` y el E2E completo de Neovim.
+
+**Conceptos que se van a tocar.** Matriz de compatibilidad capability-por-capability;
+degradación elegante (cada feature es opcional); límites honestos por editor (Helix y
+Zed necesitan grammar tree-sitter para highlighting).
+
+---
+
+## Fase 7 — Release (pendiente)
+
+**Estado:**  no iniciada.
+
+**Qué hará.** `LICENSE`, `CHANGELOG`, snapshot de `npm pack --dry-run`, smoke de
+instalación desde tarball en un directorio temporal, README final con troubleshooting
+y `docs/VSCODE-HANDOFF.md` completo y revisado.
+
+**Conceptos que se van a tocar.** Empaquetado npm (`files`, `bin`, `exports`),
+verificación en máquina limpia, y el handoff al teammate de la extensión de VS Code.
+
+---
+
+## Fase 8 — Futuro opcional (pendiente)
+
+**Estado:**  no iniciada (sólo si se pide).
+
+Publicar a npm, grammar tree-sitter (highlighting real en Helix/Zed), pull
+diagnostics, delta de semantic tokens, binario standalone y multi-root workspace
+symbols. Cada ítem necesita su propio gate.
+
+---
+
+## Cómo se cierra cada fase
+
+1. `npm run ci` verde (check-deps → typecheck → lint → build → tests).
+2. Fixtures/goldens nuevos commiteados.
+3. `dist/` recompilado y `:LspRestart` en el editor para probar a mano.
+4. Este documento actualizado con la fase cerrada.

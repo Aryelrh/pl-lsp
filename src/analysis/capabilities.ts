@@ -5,7 +5,10 @@
 import {
   AMBIENT_BANGS,
   BANG_REGISTRY,
+  globCovers,
+  hostToRegex,
   type BangCall,
+  type CapabilityToken,
   type EffectCategory,
   type FnDecl,
   type NeedsDecl,
@@ -13,6 +16,7 @@ import {
   type SerializedManifest,
   type Statement,
 } from './core-adapter.js';
+import { collectNodes } from './walk.js';
 
 export interface CapabilityModel {
   manifest: SerializedManifest | null;
@@ -103,4 +107,95 @@ export function coverageGrants(manifest: SerializedManifest, category: EffectCat
     case 'exec':
       return manifest.exec.map((glob) => glob.raw);
   }
+}
+
+/** Capability token text for a raw grant pattern, as it would appear in `needs`. */
+export function grantTokenText(category: EffectCategory, pattern: string): string {
+  switch (category) {
+    case 'net':
+      return `net("${pattern}")`;
+    case 'fsRead':
+      return `fs.read("${pattern}")`;
+    case 'fsWrite':
+      return `fs.write("${pattern}")`;
+    case 'exec':
+      return `exec("${pattern}")`;
+  }
+}
+
+/** Every grant of a manifest as `needs` token text (used by hover and completion). */
+export function manifestTokenTexts(manifest: SerializedManifest): string[] {
+  const tokens: string[] = [];
+  for (const host of manifest.net) tokens.push(grantTokenText('net', host.pattern));
+  for (const glob of manifest.fsRead) tokens.push(grantTokenText('fsRead', glob.raw));
+  for (const glob of manifest.fsWrite) tokens.push(grantTokenText('fsWrite', glob.raw));
+  for (const glob of manifest.exec) tokens.push(grantTokenText('exec', glob.raw));
+  for (const env of manifest.env) tokens.push(`env(${env.name}${env.optional ? '?' : ''})`);
+  return tokens;
+}
+
+/** Manifest of the scope enclosing a fn (its own `needs` excluded). */
+export function parentManifestOf(model: CapabilityModel, fn: FnDecl): SerializedManifest | null {
+  const enclosing = model.fns
+    .filter((candidate) => candidate !== fn && contains(candidate.span, fn.span[0]))
+    .sort((a, b) => a.span[1] - a.span[0] - (b.span[1] - b.span[0]));
+  for (const outer of enclosing) {
+    if (outer.needs === null || model.manifest === null) continue;
+    const scoped = model.manifest.scoped[outer.id];
+    if (scoped !== undefined) return scoped;
+  }
+  return model.manifest;
+}
+
+function categoryOfToken(token: CapabilityToken): EffectCategory | null {
+  switch (token.kind) {
+    case 'FsReadCapability':
+      return 'fsRead';
+    case 'FsWriteCapability':
+      return 'fsWrite';
+    case 'NetCapability':
+      return 'net';
+    case 'ExecCapability':
+      return 'exec';
+    case 'EnvCapability':
+      return null;
+    case 'OnlyCapability':
+      return categoryOfToken(token.inner);
+  }
+}
+
+function tokenCoversLiteral(token: CapabilityToken, value: string): boolean {
+  switch (token.kind) {
+    case 'NetCapability': {
+      let hostname: string;
+      try {
+        hostname = new URL(value).hostname;
+      } catch {
+        return false;
+      }
+      const type = token.pattern.startsWith('*.') ? 'wildcard' : 'exact';
+      return hostToRegex(type, token.pattern).test(hostname);
+    }
+    case 'FsReadCapability':
+    case 'FsWriteCapability':
+    case 'ExecCapability':
+      return globCovers(token.pattern, value);
+    case 'EnvCapability':
+      return false;
+    case 'OnlyCapability':
+      return tokenCoversLiteral(token.inner, value);
+  }
+}
+
+/** Whether any literal bang call in the program is covered by this capability token. */
+export function isTokenUsed(program: Program, token: CapabilityToken): boolean {
+  const category = categoryOfToken(token);
+  if (category === null) return false;
+  for (const bang of collectNodes<BangCall>(program.body, 'BangCall')) {
+    if (BANG_REGISTRY[bang.target] !== category) continue;
+    const argument = bang.args[0];
+    if (argument === undefined || argument.kind !== 'StringLiteral') continue;
+    if (tokenCoversLiteral(token, argument.value)) return true;
+  }
+  return false;
 }

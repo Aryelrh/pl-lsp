@@ -11,6 +11,8 @@ import {
   analyzeSource,
   calleeSignature,
   collectStrictDiagnostics,
+  globCovers,
+  hostToRegex,
 } from 'placitum';
 import type { AnalysisResult, Expr, NativeSig, PlacitumError, Program } from 'placitum';
 
@@ -31,6 +33,6 @@ export function signatureOf(callee: Expr): NativeSig | null {
   return calleeSignature(callee);
 }
 
-export { AMBIENT_BANGS, BANG_REGISTRY, BANG_SIGNATURES, EFFECTFUL_STDLIB, PURE_SIGNATURES };
+export { AMBIENT_BANGS, BANG_REGISTRY, BANG_SIGNATURES, EFFECTFUL_STDLIB, PURE_SIGNATURES, globCovers, hostToRegex };
 export type * from 'placitum';
 export type { AnalysisResult, Expr, NativeSig, PlacitumError, Program };

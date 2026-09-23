@@ -46,6 +46,44 @@ print(table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\\n"))
 vim.cmd("qa!")
 `;
 
+const COMPLETION_HOVER_SCRIPT = `
+vim.cmd("edit " .. vim.env.PLACITUM_FILE)
+vim.lsp.start({
+  name = "placitum",
+  cmd = { vim.env.PLACITUM_NODE, vim.env.PLACITUM_SERVER, "--stdio" },
+  root_dir = vim.fn.fnamemodify(vim.env.PLACITUM_FILE, ":h"),
+})
+local attached = vim.wait(5000, function()
+  return #vim.lsp.get_clients({ bufnr = 0 }) > 0
+end)
+if not attached then
+  print("NO_ATTACH")
+  vim.cmd("qa!")
+end
+vim.wait(500, function() return false end)
+local client = vim.lsp.get_clients({ bufnr = 0 })[1]
+local uri = vim.uri_from_bufnr(0)
+local completion = nil
+client:request("textDocument/completion", {
+  textDocument = { uri = uri },
+  position = { line = 1, character = 5 },
+}, function(_, response) completion = response end, 0)
+vim.wait(5000, function() return completion ~= nil end)
+local labels = {}
+for _, item in ipairs(completion or {}) do table.insert(labels, item.label) end
+local hover = nil
+client:request("textDocument/hover", {
+  textDocument = { uri = uri },
+  position = { line = 0, character = 5 },
+}, function(_, response) hover = response end, 0)
+vim.wait(5000, function() return hover ~= nil end)
+local has_config = false
+for _, label in ipairs(labels) do if label == "config" then has_config = true end end
+print("COMPLETION_HAS_CONFIG=" .. tostring(has_config))
+print("HOVER=" .. ((hover and hover.contents and hover.contents.value) or "nil"))
+vim.cmd("qa!")
+`;
+
 describe.skipIf(!hasNvim || !existsSync(BIN))('neovim end-to-end', () => {
   it('renames a shadowed param without corrupting the outer binding', () => {
     const dir = mkdtempSync(join(tmpdir(), 'placitum-lsp-nvim-'));
@@ -72,5 +110,30 @@ describe.skipIf(!hasNvim || !existsSync(BIN))('neovim end-to-end', () => {
     expect(output).toContain('  return z');
     expect(output).not.toContain('  return x');
     expect(output).toContain('let y = x');
+  }, 30000);
+
+  it('serves completion and markdown hover', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'placitum-lsp-nvim-'));
+    const file = join(dir, 'hover.placitum');
+    writeFileSync(file, 'let config = 1\nlet c\n');
+    const luaPath = join(dir, 'intel.lua');
+    writeFileSync(luaPath, COMPLETION_HOVER_SCRIPT);
+
+    const result = spawnSync('nvim', ['--headless', '-u', 'NONE', '-c', `luafile ${luaPath}`], {
+      encoding: 'utf8',
+      timeout: 20000,
+      env: {
+        ...process.env,
+        PLACITUM_FILE: file,
+        PLACITUM_NODE: process.execPath,
+        PLACITUM_SERVER: fileURLToPath(BIN),
+      },
+    });
+    rmSync(dir, { recursive: true, force: true });
+
+    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+    expect(output).toContain('COMPLETION_HAS_CONFIG=true');
+    expect(output).toContain('HOVER=');
+    expect(output).toContain('**let** `config`');
   }, 30000);
 });
