@@ -34,10 +34,13 @@ markdown is the core `explain` output byte for byte, and the commands
 Compatibility is hardened and documented: every feature degrades per client
 capability, copy-paste recipes ship in `editors/` for Neovim, Helix, Emacs, Zed,
 Sublime, Vim and Kate, and `docs/COMPATIBILITY.md` holds the capability-by-capability
-matrix.
-`npm run ci` is green (typecheck, lint, build, 264 unit/protocol/e2e tests, including a
-stdout-purity check and Neovim E2E driving the shipped recipe for rename, completion,
-hover, diagnostics and the manifest).
+matrix. Packaging is release-ready: `npm pack` contents are snapshotted and
+`npm run smoke:pack` installs the tarball in a fresh temp project and runs a raw
+stdio E2E against the installed binary; the VS Code handoff spec is complete in
+`docs/VSCODE-HANDOFF.md`.
+`npm run ci` is green (typecheck, lint, build, 266 unit/protocol/e2e tests, a
+stdout-purity check, Neovim E2E driving the shipped recipe for rename, completion,
+hover, diagnostics and the manifest, and the packaging smoke).
 
 ## Features
 
@@ -227,8 +230,9 @@ Changing configuration triggers re-analysis and republished diagnostics.
 
 ```sh
 npm install
-npm run ci        # check-deps -> tsc --noEmit -> eslint -> build -> vitest -> e2e
-npm test          # vitest run
+npm run ci         # check-deps -> tsc --noEmit -> eslint -> build -> vitest -> pack smoke
+npm test           # vitest run (no packaging smoke; works offline)
+npm run smoke:pack # npm pack -> temp install -> --version/--help -> raw stdio E2E
 ```
 
 For manual testing there is a git-ignored `playground/` (Zed project settings that
@@ -278,4 +282,7 @@ Rules that make the server safe and portable:
 
 ## License
 
-See the core repository.
+[MIT](./LICENSE) © The Placitum Authors ([AUTHORS](./AUTHORS)). You may use,
+modify, and redistribute this software, including bundling it in an editor
+extension, as long as the copyright notice and the license text are kept.
+Release history lives in [`CHANGELOG.md`](./CHANGELOG.md).

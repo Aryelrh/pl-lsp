@@ -2,8 +2,24 @@
   "name": "placitum-lsp",
   "version": "0.1.0",
   "description": "Language server for Placitum — static analysis only, never executes code.",
+  "license": "MIT",
   "private": true,
   "type": "module",
+  "keywords": [
+    "lsp",
+    "language-server",
+    "placitum",
+    "capabilities",
+    "static-analysis"
+  ],
+  "homepage": "https://github.com/Aryelrh/pl-lsp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Aryelrh/pl-lsp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Aryelrh/pl-lsp/issues"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -17,7 +33,9 @@
     "dist",
     "editors",
     "README.md",
-    "LICENSE"
+    "CHANGELOG.md",
+    "LICENSE",
+    "AUTHORS"
   ],
   "scripts": {
     "check-deps": "node scripts/check-deps.mjs",
@@ -25,10 +43,11 @@
     "lint": "eslint .",
     "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/bin.js', 0o755)\"",
     "test": "vitest run",
-    "ci": "npm run check-deps && npm run typecheck && npm run lint && npm run build && npm run test"
+    "smoke:pack": "node scripts/smoke-pack.mjs",
+    "ci": "npm run check-deps && npm run typecheck && npm run lint && npm run build && npm run test && npm run smoke:pack"
   },
   "dependencies": {
-    "placitum": "github:quesadx/pl-lg#dd1f362b35888d8a19b2215772db2389e8bb244a",
+    "placitum": "github:quesadx/pl-lg#fd2dc7af10e759efed773934dba6f3c02e592014",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12"
   },

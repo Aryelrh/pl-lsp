@@ -6,7 +6,9 @@ conceptos hay detrás**. Se actualiza al cerrar cada fase del plan de referencia
 el código, los mensajes y la documentación de producto van en inglés, como exige la
 directiva.
 
-- Estado actual: **Fases 0–6 completas** · `npm run ci` verde (264 tests)
+- Estado actual: **Fases 0–6 completas; Fase 7 en curso** (solo la revisión del
+  teammate y el `vsce package` quedan fuera de este repo) · `npm run ci` verde
+  (266 tests + smoke de empaquetado)
 - Cómo leer: cada fase tiene *Objetivo → Conceptos → Qué se construyó → Decisiones y
   límites → Tests y gate → Cómo probarlo a mano*.
 
@@ -544,16 +546,79 @@ lint-checked; E2E de Neovim (incluida la receta) verde.
 
 ---
 
-## Fase 7 — Release (pendiente)
+## Fase 7 — Release
 
-**Estado:**  no iniciada.
+**Estado:**  parcial. Hecho: `LICENSE` MIT (`The Placitum Authors`) en `pl-lsp` y
+`pl-lg` (commit `fd2dc7a`), `AUTHORS` con los tres contribuidores, `CHANGELOG`,
+metadata, snapshot de empaquetado, smoke de tarball en máquina limpia, README
+final, `docs/VSCODE-HANDOFF.md` completo y pin del core actualizado a
+`fd2dc7af10e759efed773934dba6f3c02e592014`. Pendiente: la revisión del handoff
++ `vsce package`, que son del repo del teammate.
 
-**Qué hará.** `LICENSE`, `CHANGELOG`, snapshot de `npm pack --dry-run`, smoke de
-instalación desde tarball en un directorio temporal, README final con troubleshooting
-y `docs/VSCODE-HANDOFF.md` completo y revisado.
+### Objetivo
 
-**Conceptos que se van a tocar.** Empaquetado npm (`files`, `bin`, `exports`),
-verificación en máquina limpia, y el handoff al teammate de la extensión de VS Code.
+Que el paquete se pueda empaquetar, instalar y ejecutar en una máquina limpia, y
+dejar la spec exacta para la extensión de VS Code sin tocar su repositorio.
+
+### Conceptos
+
+- **Empaquetado npm.** `files` decide el tarball (`dist` + `editors` + docs);
+  `private: true` bloquea `npm publish` pero no `npm pack`; `bin` mapea
+  `placitum-lsp` y `exports` expone `dist/server.js` para el teammate.
+- **Fresh-machine simulation.** `npm pack` → `npm install <tgz>` en un directorio
+  temporal → `--version` / `--help` → E2E crudo (framing propio, `initialize`,
+  `didOpen`, E301, `shutdown`/`exit`) con verificación de pureza de stdout y
+  código de salida 0.
+- **Snapshot de contenidos.** Un test corre `npm pack --dry-run --json` y afirma
+  que el tarball incluye `dist/`, `editors/`, README y CHANGELOG, y que nunca
+  filtra `src/`, `tests/`, `scripts/` ni configs.
+- **Handoff como contrato.** `docs/VSCODE-HANDOFF.md` describe el esqueleto de la
+  extensión, el arranque del cliente, el bundling del server + core, una gramática
+  TextMate semilla, la language configuration, los comandos y el checklist de
+  aceptación. El server no sabe de VS Code: el teammate no toca este repo.
+
+### Qué se construyó
+
+| Archivo | Responsabilidad |
+|---|---|
+| `CHANGELOG.md` | Keep a Changelog, entrada 0.1.0 con el ciclo completo (fases 0–6). |
+| `scripts/smoke-pack.mjs` | Tarball + install temporal + `--version/--help` + E2E crudo. |
+| `tests/e2e/pack.test.ts` | Snapshot de `npm pack --dry-run --json` (incluye/excluye). |
+| `docs/VSCODE-HANDOFF.md` | Spec completa de la extensión (teammate). |
+| `package.json` | Metadata (`repository`/`homepage`/`bugs`/`keywords`), `smoke:pack` y `ci` extendido. |
+
+### Decisiones y límites
+
+- `smoke:pack` requiere red (el core se instala por SHA desde GitHub) y tarda
+  ~35 s; por eso cierra `npm run ci` pero `npm test` no lo corre. En una máquina
+  sin red, usar `npm test`.
+- **LICENSE resuelto**: MIT con titular colectivo `The Placitum Authors` en ambos
+  repos, más un `AUTHORS` con los contribuidores (documenta el titular sin tocar
+  la licencia cuando se sume gente). MIT no se registra en ningún lado: el
+  archivo `LICENSE` + el campo `"license": "MIT"` son la concesión. El paquete
+  sigue `private` (eso bloquea publicar, no licenciar).
+- **El core va pinneado por SHA**: el pin subió a `fd2dc7a` (merge de `dev`), que
+  agrega `LICENSE`/`AUTHORS` al tarball (`files` ahora incluye `AUTHORS`) sin
+  tocar `src/` ni `tests/` del core. `docs/CORE-VERSION.md` y
+  `CORE_API_VERSION` quedaron sincronizados con el nuevo SHA.
+- Se eliminó una autodependencia accidental `"placitum": "github:quesadx/pl-lg#…"`
+  en el `package.json` del core: rompía `check-deps` y ningún archivo la usaba.
+- La revisión final del handoff y el `vsce package` pertenecen al repositorio de
+  la extensión (teammate); acá queda la spec completa y verificable.
+
+### Gate
+
+`npm run ci` verde (266 tests + smoke de empaquetado), snapshot de contenidos
+verde y handoff completo. La firma externa (teammate) y la licencia quedan
+explícitamente pendientes.
+
+### Cómo probarlo
+
+```sh
+npm run build
+npm pack --dry-run          # contenidos del tarball
+npm run smoke:pack          # install en dir temporal + E2E crudo (requiere red)
+```
 
 ---
 

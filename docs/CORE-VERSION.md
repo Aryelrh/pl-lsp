@@ -1,7 +1,9 @@
 # Core `placitum` version pin
 
 - Package: `placitum` (quesadx/pl-lg), pinned in `package.json` as
-  `github:quesadx/pl-lg#dd1f362b35888d8a19b2215772db2389e8bb244a`.
+  `github:quesadx/pl-lg#fd2dc7af10e759efed773934dba6f3c02e592014` (the MIT
+  `LICENSE`/`AUTHORS` travel in the tarball from this commit; `src/` and `tests/`
+  are unchanged since `dd1f362`).
 - Adapter: `src/analysis/core-adapter.ts`; its `CORE_API_VERSION` must equal this SHA.
 - The server imports only the root barrel, and only through the adapter. It never
   imports the evaluator, guard, stdlib runtime, or host bindings.
