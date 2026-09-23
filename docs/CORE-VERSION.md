@@ -1,9 +1,8 @@
 # Core `placitum` version pin
 
-- Package: `placitum` (quesadx/pl-lg), pinned in `package.json` as
-  `github:quesadx/pl-lg#fd2dc7af10e759efed773934dba6f3c02e592014` (the MIT
-  `LICENSE`/`AUTHORS` travel in the tarball from this commit; `src/` and `tests/`
-  are unchanged since `dd1f362`).
+- Package: `placitum` (quesadx/pl-lg), declared in `package.json` as `^1.0.0`
+  from the npm registry (first published 2026-09-23; the MIT `LICENSE`/`AUTHORS`
+  travel in the tarball).
 - Adapter: `src/analysis/core-adapter.ts`; its `CORE_API_VERSION` must equal this SHA.
 - The server imports only the root barrel, and only through the adapter. It never
   imports the evaluator, guard, stdlib runtime, or host bindings.
@@ -29,6 +28,6 @@
 
 ## How to bump
 
-1. `npm i "placitum@git+https://github.com/quesadx/pl-lg.git#<sha>"`.
+1. `npm update placitum` (edit the range in `package.json` only for a major).
 2. Update `CORE_API_VERSION` in `src/analysis/core-adapter.ts`.
 3. Update this file and run `npm run ci`; the adapter smoke test proves the contract.

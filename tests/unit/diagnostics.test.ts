@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { createAnalysis } from '../../src/analysis/model.js';
 import { DEFAULT_CONFIG, resolveConfig } from '../../src/config.js';
-import { computeDiagnostics } from '../../src/features/diagnostics.js';
+import { computeDiagnostics, documentDiagnostic } from '../../src/features/diagnostics.js';
 
 const uncovered = readFileSync(new URL('../fixtures/uncovered.placitum', import.meta.url), 'utf8');
 const rosetta = readFileSync(new URL('../fixtures/rosetta.placitum', import.meta.url), 'utf8');
@@ -84,6 +84,23 @@ describe('computeDiagnostics', () => {
 
     const config = resolveConfig({ diagnostics: { scope: false, strictChecks: false, literalTypes: false } });
     expect(computeDiagnostics(analysisOf(source), config)).toEqual([]);
+  });
+
+  it('builds pull reports with version+config result ids', () => {
+    const analysis = analysisOf(uncovered);
+    const full = documentDiagnostic(analysis, DEFAULT_CONFIG);
+    expect(full).toMatchObject({
+      kind: 'full',
+      items: [{ code: 'E301_EXTRACT_UNCOVERED_CAPABILITY' }],
+    });
+    const resultId = 'resultId' in full ? full.resultId : undefined;
+    expect(resultId).toBeDefined();
+    expect(documentDiagnostic(analysis, DEFAULT_CONFIG, resultId)).toEqual({ kind: 'unchanged', resultId });
+
+    const disabled = resolveConfig({ diagnostics: { enable: false } });
+    const changed = documentDiagnostic(analysis, disabled, resultId);
+    expect(changed).toMatchObject({ kind: 'full', items: [] });
+    expect('resultId' in changed ? changed.resultId : undefined).not.toBe(resultId);
   });
 
   it('does not report semantic errors on a recovered parse', () => {

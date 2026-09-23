@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Dependency allow-list gate (directive §4.3). Fails when an unlisted package
-// sneaks in, or when the core `placitum` pin is not a full commit SHA.
+// sneaks in, or when the core `placitum` dependency is not a semver range.
 import { readFileSync } from 'node:fs';
 
 const ALLOWED = new Set([
@@ -29,9 +29,9 @@ if (offenders.length > 0) {
   process.exit(1);
 }
 
-const pin = pkg.dependencies?.placitum ?? '';
-if (!/#[0-9a-f]{40}$/.test(pin)) {
-  console.error(`check-deps: placitum must be pinned to a full commit SHA, got: ${pin}`);
+const spec = pkg.dependencies?.placitum ?? '';
+if (!/^\^?\d+\.\d+\.\d+$/.test(spec)) {
+  console.error(`check-deps: placitum must be an exact version or caret range, got: ${spec}`);
   process.exit(1);
 }
 

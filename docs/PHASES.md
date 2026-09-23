@@ -7,8 +7,9 @@ el código, los mensajes y la documentación de producto van en inglés, como ex
 directiva.
 
 - Estado actual: **Fases 0–6 completas; Fase 7 en curso** (solo la revisión del
-  teammate y el `vsce package` quedan fuera de este repo) · `npm run ci` verde
-  (266 tests + smoke de empaquetado)
+  teammate y el `vsce package` quedan fuera de este repo); **Fase 8 parcial**
+  (multi-root, pull diagnostics y delta de semantic tokens) · `npm run ci` verde
+  (274 tests + smoke de empaquetado)
 - Cómo leer: cada fase tiene *Objetivo → Conceptos → Qué se construyó → Decisiones y
   límites → Tests y gate → Cómo probarlo a mano*.
 
@@ -589,18 +590,20 @@ dejar la spec exacta para la extensión de VS Code sin tocar su repositorio.
 
 ### Decisiones y límites
 
-- `smoke:pack` requiere red (el core se instala por SHA desde GitHub) y tarda
-  ~35 s; por eso cierra `npm run ci` pero `npm test` no lo corre. En una máquina
-  sin red, usar `npm test`.
+- `smoke:pack` requiere red (instala el core desde npm) y tarda ~35 s; por eso
+  cierra `npm run ci` pero `npm test` no lo corre. En una máquina sin red, usar
+  `npm test`.
 - **LICENSE resuelto**: MIT con titular colectivo `The Placitum Authors` en ambos
   repos, más un `AUTHORS` con los contribuidores (documenta el titular sin tocar
   la licencia cuando se sume gente). MIT no se registra en ningún lado: el
   archivo `LICENSE` + el campo `"license": "MIT"` son la concesión. El paquete
   sigue `private` (eso bloquea publicar, no licenciar).
-- **El core va pinneado por SHA**: el pin subió a `fd2dc7a` (merge de `dev`), que
-  agrega `LICENSE`/`AUTHORS` al tarball (`files` ahora incluye `AUTHORS`) sin
-  tocar `src/` ni `tests/` del core. `docs/CORE-VERSION.md` y
-  `CORE_API_VERSION` quedaron sincronizados con el nuevo SHA.
+- **El core se publicó en npm** (`placitum@1.0.0`, 2026-09-23) y pl-lsp migró de
+  `github:quesadx/pl-lg#sha` a `"placitum": "^1.0.0"`. Se ajustaron
+  `CORE_API_VERSION` (ahora versión, no SHA), `check-deps` (exige semver),
+  `docs/CORE-VERSION.md`, los fixtures del binder y el test del adapter (verifica
+  que coincida con la versión instalada). Ya no hay hashes que copiar: actualizar
+  es `npm update placitum`.
 - Se eliminó una autodependencia accidental `"placitum": "github:quesadx/pl-lg#…"`
   en el `package.json` del core: rompía `check-deps` y ningún archivo la usaba.
 - La revisión final del handoff y el `vsce package` pertenecen al repositorio de
@@ -622,13 +625,64 @@ npm run smoke:pack          # install en dir temporal + E2E crudo (requiere red)
 
 ---
 
-## Fase 8 — Futuro opcional (pendiente)
+## Fase 8 — Futuro opcional (parcial)
 
-**Estado:**  no iniciada (sólo si se pide).
+**Estado:**  3 de 6 ítems completos, pedidos explícitamente: multi-root workspace
+symbols, pull diagnostics y delta de semantic tokens. Pendientes: publicar a npm,
+grammar tree-sitter y binario standalone (cada uno con su propio gate).
 
-Publicar a npm, grammar tree-sitter (highlighting real en Helix/Zed), pull
-diagnostics, delta de semantic tokens, binario standalone y multi-root workspace
-symbols. Cada ítem necesita su propio gate.
+### Conceptos
+
+- **Multi-root.** `workspace/didChangeWorkspaceFolders` actualiza los roots y
+  resetea el índice (que se reconstruye on demand). Con más de un root, el
+  `containerName` se prefija con la carpeta (`mi-lib/x.placitum`) para
+  desambiguar archivos homónimos. El cap y la caché por mtime siguen igual.
+- **Pull diagnostics (LSP 3.17).** `textDocument/diagnostic` devuelve un report
+  `full` con `resultId` (`v<versión>:<gates de config>`); si el cliente manda un
+  `previousResultId` que coincide, se responde `unchanged` sin recalcular. El
+  provider se anuncia **solo** si el cliente declara `textDocument.diagnostic`;
+  el resto sigue con push. Los handlers pull usan `freshAnalysis` (recalcula si
+  la versión cacheada quedó vieja) para no responder datos stale tras un cambio.
+- **Delta de semantic tokens.** `full: { delta: true }` con `resultId` por
+  versión. La primera respuesta es full; con `previousResultId` válido se manda
+  un único edit mínimo (prefijo/sufijo común en tokens de 5 números). Sin base o
+  con resultId viejo, se responde full. La caché se limpia al cerrar el documento.
+
+### Qué se construyó
+
+| Archivo | Responsabilidad |
+|---|---|
+| `src/features/diagnostics.ts` | `documentDiagnostic()` + `diagnosticResultId()`. |
+| `src/features/semantic-tokens.ts` | `semanticTokensDelta()` + `semanticTokensResultId()`. |
+| `src/documents.ts` | `freshAnalysis()` para requests pull. |
+| `src/workspace/files.ts` | `containerName` con prefijo de carpeta en multi-root. |
+| `src/server.ts` | Handler de carpetas, pull diagnostics, delta + caché, capability condicional. |
+
+### Decisiones y límites
+
+- Push y pull coexisten: el cliente elige. Los que declaran pull reciben
+  `diagnosticProvider`; el resto sigue con `publishDiagnostics`.
+- El contrato §7.1 original anunciaba `semanticTokensProvider.full: true`; ahora
+  es `{ delta: true }` (requisito para deltas). Documentado acá y en
+  `docs/COMPATIBILITY.md`.
+- El delta es un solo edit por respuesta (prefijo/sufijo), no una secuencia
+  mínima óptima: suficiente y determinista; `ponytail:` si algún cliente mide el
+  ancho de banda, cambiar a LCS.
+- Multi-root no deduplica archivos entre roots solapados ni pagina el cap por
+  carpeta; el cap sigue siendo global.
+
+### Gate
+
+274 tests verdes (unit + protocolo + e2e + smoke de empaquetado), incluyendo:
+report pull full/unchanged/refresh, delta que reconstruye el stream y fallback a
+full, y alta de carpeta con prefijo de `containerName`.
+
+### Cómo probarlo
+
+```sh
+npx vitest run tests/protocol/compatibility.test.ts   # pull + multi-root
+npx vitest run tests/protocol/intelligence.test.ts    # full + delta
+```
 
 ---
 

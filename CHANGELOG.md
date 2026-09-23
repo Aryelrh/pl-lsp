@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Multi-root workspace symbols: `workspace/didChangeWorkspaceFolders` rescans
+  added/removed folders and container names are prefixed with the folder when
+  there is more than one root.
+- Pull diagnostics (`textDocument/diagnostic`, LSP 3.17) for clients that
+  declare support, with version+config `resultId`s; push stays for everyone else.
+- Semantic token deltas (`semanticTokens/full/delta`) with per-version
+  `resultId`s and a minimal single-edit diff.
+
 ## [0.1.0] - 2026-09-23
 
 First complete development cycle (phases 0–6 of the implementation directive).

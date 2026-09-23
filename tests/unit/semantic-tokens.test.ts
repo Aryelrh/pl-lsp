@@ -1,8 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import type { SemanticTokensEdit } from 'vscode-languageserver/node.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { createAnalysis, type Analysis } from '../../src/analysis/model.js';
-import { semanticTokens, TOKEN_MODIFIERS, TOKEN_TYPES } from '../../src/features/semantic-tokens.js';
+import {
+  semanticTokens,
+  semanticTokensDelta,
+  semanticTokensResultId,
+  TOKEN_MODIFIERS,
+  TOKEN_TYPES,
+} from '../../src/features/semantic-tokens.js';
 
 const fixture = readFileSync(new URL('../fixtures/tokens.placitum', import.meta.url), 'utf8');
 
@@ -30,6 +37,27 @@ function decode(analysis: Analysis): string[] {
   }
   return decoded;
 }
+
+function applyEdits(data: readonly number[], edits: readonly SemanticTokensEdit[]): number[] {
+  const result = [...data];
+  for (const edit of edits) result.splice(edit.start, edit.deleteCount, ...(edit.data ?? []));
+  return result;
+}
+
+describe('semanticTokensDelta', () => {
+  it('reconstructs the current stream from the previous one', () => {
+    const previous = semanticTokens(analysisOf('let x = 1\n')).data;
+    const current = semanticTokens(analysisOf('let x = 1\nlet y = 2\n')).data;
+    expect(applyEdits(previous, semanticTokensDelta(previous, current))).toEqual(current);
+    expect(semanticTokensDelta(current, current)).toEqual([]);
+    expect(applyEdits(current, semanticTokensDelta(current, []))).toEqual([]);
+    expect(applyEdits([], semanticTokensDelta([], current))).toEqual(current);
+  });
+
+  it('reports the document version as the result id', () => {
+    expect(semanticTokensResultId(analysisOf('let x = 1\n'))).toBe('v1');
+  });
+});
 
 describe('semanticTokens', () => {
   it('classifies the golden fixture end to end', () => {

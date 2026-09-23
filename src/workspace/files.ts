@@ -5,7 +5,7 @@
  * workspace ever exceeds it.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { basename, join, relative, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { WorkspaceSymbol } from 'vscode-languageserver/node.js';
 import { workspaceSymbolsFromSource } from '../features/symbols.js';
@@ -80,7 +80,9 @@ export class WorkspaceIndex {
 
   private load(uri: string, file: string, mtimeMs: number, root: string): WorkspaceSymbol[] {
     const source = readFileSync(file, 'utf8');
-    const containerName = relative(root, file).split(sep).join('/');
+    const relativePath = relative(root, file).split(sep).join('/');
+    // With several roots, disambiguate same-named files by prefixing the folder.
+    const containerName = this.roots.length > 1 ? `${basename(root)}/${relativePath}` : relativePath;
     const symbols = workspaceSymbolsFromSource(uri, source, containerName);
     this.cache.set(uri, { mtimeMs, symbols });
     return symbols;

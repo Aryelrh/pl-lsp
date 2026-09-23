@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CodeActionKind,
   DidChangeWatchedFilesNotification,
+  DidChangeWorkspaceFoldersNotification,
   MarkupKind,
   MessageType,
   ResponseError,
@@ -11,10 +12,14 @@ import {
   type ClientCapabilities,
   type CodeAction,
   type Connection,
+  type DidChangeWorkspaceFoldersParams,
+  type DocumentDiagnosticReport,
   type InitializeParams,
   type InitializeResult,
   type Location,
   type LocationLink,
+  type SemanticTokens,
+  type SemanticTokensDelta,
 } from 'vscode-languageserver/node.js';
 import { DEFAULT_CONFIG, resolveConfig, type PlacitumConfig } from './config.js';
 import { Documents } from './documents.js';
@@ -24,7 +29,7 @@ import { codeActionsAt } from './features/code-actions.js';
 import { codeLenses } from './features/code-lens.js';
 import { completeAt } from './features/completion.js';
 import { definitionAt, typeDefinitionAt, type DefinitionTarget } from './features/definition.js';
-import { computeDiagnostics } from './features/diagnostics.js';
+import { computeDiagnostics, documentDiagnostic } from './features/diagnostics.js';
 import { foldingRanges } from './features/folding.js';
 import { highlightsAt } from './features/highlights.js';
 import { hoverAt } from './features/hover.js';
@@ -33,7 +38,13 @@ import { capMessage, manifestPayload, type ManifestPayload } from './features/ma
 import { referencesAt } from './features/references.js';
 import { prepareRenameAt, renameAt } from './features/rename.js';
 import { selectionRanges } from './features/selection.js';
-import { semanticTokens, TOKEN_MODIFIERS, TOKEN_TYPES } from './features/semantic-tokens.js';
+import {
+  semanticTokens,
+  semanticTokensDelta,
+  semanticTokensResultId,
+  TOKEN_MODIFIERS,
+  TOKEN_TYPES,
+} from './features/semantic-tokens.js';
 import { signatureHelpAt } from './features/signature.js';
 import { documentSymbols } from './features/symbols.js';
 import { WorkspaceIndex } from './workspace/files.js';
@@ -56,8 +67,8 @@ function placitumSection(initializationOptions: unknown): unknown {
   return isRecord(initializationOptions) ? initializationOptions['placitum'] : undefined;
 }
 
-function initializeResult(): InitializeResult {
-  return {
+function initializeResult(capabilities: ClientCapabilities | undefined): InitializeResult {
+  const result: InitializeResult = {
     capabilities: {
       positionEncoding: 'utf-16',
       textDocumentSync: {
@@ -85,11 +96,16 @@ function initializeResult(): InitializeResult {
       },
       semanticTokensProvider: {
         legend: { tokenTypes: [...TOKEN_TYPES], tokenModifiers: [...TOKEN_MODIFIERS] },
-        full: true,
+        full: { delta: true },
       },
     },
     serverInfo: { name: 'placitum-lsp', version: VERSION },
   };
+  // Pull diagnostics only for clients that support them; everyone else keeps push.
+  if (capabilities?.textDocument?.diagnostic !== undefined) {
+    result.capabilities.diagnosticProvider = { interFileDependencies: false, workspaceDiagnostics: false };
+  }
+  return result;
 }
 
 function applyTrace(connection: Connection, log: Logger): void {
@@ -103,13 +119,7 @@ function applyTrace(connection: Connection, log: Logger): void {
   });
 }
 
-function rootPaths(params: InitializeParams): string[] {
-  const folders = params.workspaceFolders;
-  const uris = folders !== null && folders !== undefined && folders.length > 0
-    ? folders.map((folder) => folder.uri)
-    : params.rootUri !== null && params.rootUri !== undefined
-      ? [params.rootUri]
-      : [];
+function pathsFromUris(uris: readonly string[]): string[] {
   const paths: string[] = [];
   for (const uri of uris) {
     try {
@@ -119,6 +129,16 @@ function rootPaths(params: InitializeParams): string[] {
     }
   }
   return paths;
+}
+
+function rootPaths(params: InitializeParams): string[] {
+  const folders = params.workspaceFolders;
+  const uris = folders !== null && folders !== undefined && folders.length > 0
+    ? folders.map((folder) => folder.uri)
+    : params.rootUri !== null && params.rootUri !== undefined
+      ? [params.rootUri]
+      : [];
+  return pathsFromUris(uris);
 }
 
 /** Never let a feature handler take the connection down; ResponseErrors pass through. */
@@ -176,7 +196,7 @@ export function createServer(connection: Connection, options: ServerOptions): vo
     roots = rootPaths(params);
     applyConfig(placitumSection(params.initializationOptions));
     log.info(`initialize (client=${params.clientInfo?.name ?? 'unknown'}, roots=${roots.length})`);
-    return initializeResult();
+    return initializeResult(capabilities);
   });
 
   connection.onInitialized(() => {
@@ -195,6 +215,13 @@ export function createServer(connection: Connection, options: ServerOptions): vo
 
   connection.onDidChangeWatchedFiles((params) => {
     for (const change of params.changes) workspaceIndex?.invalidate(change.uri);
+  });
+
+  connection.onNotification(DidChangeWorkspaceFoldersNotification.type, (params: DidChangeWorkspaceFoldersParams) => {
+    const removed = new Set(pathsFromUris(params.event.removed.map((folder) => folder.uri)));
+    roots = roots.filter((root) => !removed.has(root)).concat(pathsFromUris(params.event.added.map((folder) => folder.uri)));
+    workspaceIndex = null;
+    log.info(`workspace folders changed (roots=${roots.length})`);
   });
 
   connection.onDefinition((params) =>
@@ -318,11 +345,41 @@ export function createServer(connection: Connection, options: ServerOptions): vo
     }),
   );
 
+  // Last full stream per document, used to answer semanticTokens/full/delta.
+  const semanticCache = new Map<string, { resultId: string; data: number[] }>();
+  documents.sync.onDidClose((event) => semanticCache.delete(event.document.uri));
+
   connection.languages.semanticTokens.on((params) =>
     respond(log, 'semanticTokens', { data: [] }, () => {
-      const analysis = analysisAt(params.textDocument.uri);
+      const analysis = documents.freshAnalysis(params.textDocument.uri);
       if (analysis === undefined) return { data: [] };
-      return semanticTokens(analysis);
+      const tokens = semanticTokens(analysis);
+      const resultId = semanticTokensResultId(analysis);
+      semanticCache.set(params.textDocument.uri, { resultId, data: tokens.data });
+      return { resultId, ...tokens };
+    }),
+  );
+
+  connection.languages.semanticTokens.onDelta((params) =>
+    respond<SemanticTokens | SemanticTokensDelta>(log, 'semanticTokensDelta', { data: [] }, () => {
+      const analysis = documents.freshAnalysis(params.textDocument.uri);
+      if (analysis === undefined) return { data: [] };
+      const current = semanticTokens(analysis);
+      const resultId = semanticTokensResultId(analysis);
+      const cached = semanticCache.get(params.textDocument.uri);
+      semanticCache.set(params.textDocument.uri, { resultId, data: current.data });
+      if (cached === undefined || params.previousResultId !== cached.resultId) {
+        return { resultId, data: current.data };
+      }
+      return { resultId, edits: semanticTokensDelta(cached.data, current.data) };
+    }),
+  );
+
+  connection.languages.diagnostics.on((params) =>
+    respond<DocumentDiagnosticReport>(log, 'diagnostic', { kind: 'full', items: [] }, () => {
+      const analysis = documents.freshAnalysis(params.textDocument.uri);
+      if (analysis === undefined) return { kind: 'full', items: [] };
+      return documentDiagnostic(analysis, config, params.previousResultId);
     }),
   );
 

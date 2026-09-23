@@ -1,5 +1,5 @@
-/** Full semantic tokens: AST-derived spans first, token-kind fallback second (directive §7.8). */
-import type { SemanticTokens } from 'vscode-languageserver/node.js';
+/** Full semantic tokens and deltas: AST-derived spans first, token-kind fallback second (directive §7.8). */
+import type { SemanticTokens, SemanticTokensEdit } from 'vscode-languageserver/node.js';
 import {
   BANG_SIGNATURES,
   type BangCall,
@@ -127,6 +127,37 @@ export function semanticTokens(analysis: Analysis): SemanticTokens {
   }
 
   return { data: encode(analysis, classified) };
+}
+
+/** Result id pairing full and delta requests: one per document version. */
+export function semanticTokensResultId(analysis: Analysis): string {
+  return `v${analysis.version}`;
+}
+
+function sameToken(previous: readonly number[], current: readonly number[], left: number, right: number): boolean {
+  const a = left * 5;
+  const b = right * 5;
+  for (let index = 0; index < 5; index += 1) {
+    if (previous[a + index] !== current[b + index]) return false;
+  }
+  return true;
+}
+
+/** Minimal single-edit delta between two flat token streams (LSP semanticTokens edits). */
+export function semanticTokensDelta(previous: readonly number[], current: readonly number[]): SemanticTokensEdit[] {
+  const previousCount = Math.floor(previous.length / 5);
+  const currentCount = Math.floor(current.length / 5);
+  let prefix = 0;
+  const maxPrefix = Math.min(previousCount, currentCount);
+  while (prefix < maxPrefix && sameToken(previous, current, prefix, prefix)) prefix += 1;
+  let suffix = 0;
+  while (suffix < maxPrefix - prefix && sameToken(previous, current, previousCount - 1 - suffix, currentCount - 1 - suffix)) {
+    suffix += 1;
+  }
+  const deleteCount = (previousCount - prefix - suffix) * 5;
+  const data = current.slice(prefix * 5, (currentCount - suffix) * 5);
+  if (deleteCount === 0 && data.length === 0) return [];
+  return [{ start: prefix * 5, deleteCount, data }];
 }
 
 function encode(analysis: Analysis, classified: Classified[]): number[] {

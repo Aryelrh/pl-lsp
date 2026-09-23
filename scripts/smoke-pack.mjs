@@ -2,7 +2,7 @@
 // Phase 7 gate: pack the tarball, install it in a fresh temp project, then run
 // `--version`, `--help` and a raw framed JSON-RPC E2E against the installed
 // binary (initialize -> didOpen -> E301 diagnostic -> shutdown/exit).
-// Requires network: the `placitum` dependency is fetched from its pinned SHA.
+// Requires network: the `placitum` dependency is fetched from the npm registry.
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -108,7 +108,7 @@ try {
   const packed = run('npm', ['pack', '--silent', '--pack-destination', work], root).trim().split('\n').pop();
   const tarball = join(work, packed);
   writeFileSync(join(work, 'package.json'), JSON.stringify({ name: 'smoke', private: true, version: '0.0.0' }, null, 2));
-  log('installing tarball in a temp project (fetches the pinned core; may take a while)');
+  log('installing tarball in a temp project (fetches the core from npm)');
   run('npm', ['install', '--no-audit', '--no-fund', tarball]);
   const bin = join(work, 'node_modules', '.bin', 'placitum-lsp');
   const version = run(bin, ['--version']).trim();
