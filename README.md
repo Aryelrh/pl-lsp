@@ -13,7 +13,7 @@ and exposes it over JSON-RPC on stdio, so any spec-compliant editor works.
 
 ## Status
 
-Phases 0–5 complete. The repository scaffold is in place (strict TypeScript, ESLint
+Phases 0–6 complete. The repository scaffold is in place (strict TypeScript, ESLint
 import boundaries, dependency allow-list, pinned core `placitum`), and the server runs
 over stdio: lifecycle, incremental document sync, per-version analysis cache, debounced
 push diagnostics, `workspace/configuration` + `initializationOptions` settings, and
@@ -31,8 +31,16 @@ quick fixes (add `needs`, insert `}`, declare with `let`, rename redeclarations)
 over `needs` clauses, optional inlay hints, the custom `placitum/manifest` request whose
 markdown is the core `explain` output byte for byte, and the commands
 `placitum.showManifest` / `placitum.reanalyze` / `placitum.addNeeds`.
-`npm run ci` is green (typecheck, lint, build, 246 unit/protocol/e2e tests, including a
-stdout-purity check and Neovim E2E for rename, completion and hover).
+Compatibility is hardened and documented: every feature degrades per client
+capability, copy-paste recipes ship in `editors/` for Neovim, Helix, Emacs, Zed,
+Sublime, Vim and Kate, and `docs/COMPATIBILITY.md` holds the capability-by-capability
+matrix. Packaging is release-ready: `npm pack` contents are snapshotted and
+`npm run smoke:pack` installs the tarball in a fresh temp project and runs a raw
+stdio E2E against the installed binary; the VS Code handoff spec is complete in
+`docs/VSCODE-HANDOFF.md`.
+`npm run ci` is green (typecheck, lint, build, 266 unit/protocol/e2e tests, a
+stdout-purity check, Neovim E2E driving the shipped recipe for rename, completion,
+hover, diagnostics and the manifest, and the packaging smoke).
 
 ## Features
 
@@ -222,8 +230,9 @@ Changing configuration triggers re-analysis and republished diagnostics.
 
 ```sh
 npm install
-npm run ci        # check-deps -> tsc --noEmit -> eslint -> build -> vitest -> e2e
-npm test          # vitest run
+npm run ci         # check-deps -> tsc --noEmit -> eslint -> build -> vitest -> pack smoke
+npm test           # vitest run (no packaging smoke; works offline)
+npm run smoke:pack # npm pack -> temp install -> --version/--help -> raw stdio E2E
 ```
 
 For manual testing there is a git-ignored `playground/` (Zed project settings that
@@ -245,10 +254,10 @@ src/
                       references, rename, symbols, semantic-tokens, folding,
                       selection, highlights, code-actions, code-lens,
                       inlay-hints, manifest-command
-editors/              ready-to-copy client recipes
+editors/              ready-to-copy client recipes (see editors/README.md)
 tests/                unit/ , protocol/ , fixtures/ , e2e/
 docs/                 PHASES.md (bitácora por fase), VSCODE-HANDOFF.md,
-                      CORE-VERSION.md, BLOCKED.md
+                      CORE-VERSION.md, COMPATIBILITY.md, EDITOR-CHECKLIST.md
 ```
 
 Rules that make the server safe and portable:
@@ -273,4 +282,7 @@ Rules that make the server safe and portable:
 
 ## License
 
-See the core repository.
+[MIT](./LICENSE) © The Placitum Authors ([AUTHORS](./AUTHORS)). You may use,
+modify, and redistribute this software, including bundling it in an editor
+extension, as long as the copyright notice and the license text are kept.
+Release history lives in [`CHANGELOG.md`](./CHANGELOG.md).

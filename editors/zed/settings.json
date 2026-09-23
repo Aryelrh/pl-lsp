@@ -1,0 +1,13 @@
+{
+  "lsp": {
+    "placitum-lsp": {
+      "binary": { "path": "placitum-lsp", "arguments": ["--stdio"] }
+    }
+  },
+  "languages": {
+    "Placitum": {
+      "language_servers": ["placitum-lsp"],
+      "file_types": ["placitum"]
+    }
+  }
+}

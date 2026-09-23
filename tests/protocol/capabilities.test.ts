@@ -131,6 +131,18 @@ describe('capability UX over the protocol', () => {
     server.dispose();
   });
 
+  it('resolves commands without arguments to the only open document', async () => {
+    const server = createTestClient();
+    await server.initialize();
+    const messages: ShowMessageParams[] = [];
+    server.connection.onNotification('window/showMessage', (params: ShowMessageParams) => messages.push(params));
+    open(server, rosetta);
+    await server.connection.sendRequest('workspace/executeCommand', { command: 'placitum.showManifest' });
+    await waitUntil(() => messages.length > 0);
+    expect(messages[0]?.message).toContain('grants (statically proven):');
+    server.dispose();
+  });
+
   it('applies the add-needs edit for placitum.addNeeds', async () => {
     const server = createTestClient();
     await server.initialize();

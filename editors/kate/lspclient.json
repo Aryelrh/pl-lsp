@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "placitum": {
+      "command": ["placitum-lsp", "--stdio"],
+      "rootIndicationFileNames": [".git"],
+      "url": "https://github.com/quesadx/pl-lg",
+      "highlightingModeRegex": "^Placitum$"
+    }
+  }
+}

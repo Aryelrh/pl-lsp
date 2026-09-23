@@ -18,7 +18,7 @@ import {
 import type { AnalysisResult, Expr, NativeSig, PlacitumError, Program, SerializedManifest } from 'placitum';
 
 /** Commit SHA of quesadx/pl-lg pinned in package.json (see docs/CORE-VERSION.md). */
-export const CORE_API_VERSION = 'dd1f362b35888d8a19b2215772db2389e8bb244a';
+export const CORE_API_VERSION = 'fd2dc7af10e759efed773934dba6f3c02e592014';
 
 /** Pure pipeline: lex -> parse -> extract, tolerant, no execution. */
 export function analyze(source: string): AnalysisResult {
