@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "description": "Language server for Placitum — static analysis only, never executes code.",
   "license": "MIT",
-  "private": true,
   "type": "module",
   "keywords": [
     "lsp",
@@ -24,7 +23,7 @@
     "node": ">=20"
   },
   "bin": {
-    "placitum-lsp": "./dist/bin.js"
+    "placitum-lsp": "dist/bin.js"
   },
   "exports": {
     ".": "./dist/server.js"
@@ -38,16 +37,18 @@
     "AUTHORS"
   ],
   "scripts": {
+    "prepublishOnly": "npm run verify",
     "check-deps": "node scripts/check-deps.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "build": "tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/bin.js', 0o755)\"",
     "test": "vitest run",
     "smoke:pack": "node scripts/smoke-pack.mjs",
-    "ci": "npm run check-deps && npm run typecheck && npm run lint && npm run build && npm run test && npm run smoke:pack"
+    "verify": "npm run check-deps && npm run typecheck && npm run lint && npm run build && npm run test",
+    "ci": "npm run verify && npm run smoke:pack"
   },
   "dependencies": {
-    "placitum": "github:quesadx/pl-lg#fd2dc7af10e759efed773934dba6f3c02e592014",
+    "placitum": "^1.0.0",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12"
   },

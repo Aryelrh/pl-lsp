@@ -14,7 +14,7 @@ and exposes it over JSON-RPC on stdio, so any spec-compliant editor works.
 ## Status
 
 Phases 0–6 complete. The repository scaffold is in place (strict TypeScript, ESLint
-import boundaries, dependency allow-list, pinned core `placitum`), and the server runs
+import boundaries, dependency allow-list, core `placitum` from npm), and the server runs
 over stdio: lifecycle, incremental document sync, per-version analysis cache, debounced
 push diagnostics, `workspace/configuration` + `initializationOptions` settings, and
 stderr-only logging. Diagnostics cover the core pipeline (`E1xx`–`E3xx`, tolerant
@@ -66,7 +66,7 @@ quick fixes, code lens, inlay hints, semantic tokens (full + delta), pull diagno
 ## Requirements
 
 - Node.js `>= 20` (Node 22 recommended; the dev shell pins `nodejs_22`).
-- npm (the core `placitum` package is installed from a pinned GitHub commit).
+- npm (the core `placitum` package comes from the registry).
 - Optional: Nix with flakes + direnv for a reproducible dev shell.
 
 ## Install
@@ -77,7 +77,7 @@ quick fixes, code lens, inlay hints, semantic tokens (full + delta), pull diagno
 # Option A: Nix dev shell (Node 22)
 nix develop          # or: direnv allow
 
-# Install dependencies (core `placitum` from the pinned SHA)
+# Install dependencies (core `placitum` from npm)
 npm install
 
 # Build once the server sources land

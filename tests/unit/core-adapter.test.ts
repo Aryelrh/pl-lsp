@@ -3,8 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { analyze, CORE_API_VERSION } from '../../src/analysis/core-adapter.js';
 
 describe('core adapter', () => {
-  it('records the pinned core commit SHA', () => {
-    expect(CORE_API_VERSION).toMatch(/^[0-9a-f]{40}$/);
+  it('matches the version of the installed core', () => {
+    expect(CORE_API_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    const installed = JSON.parse(
+      readFileSync(new URL('../../node_modules/placitum/package.json', import.meta.url), 'utf8'),
+    ) as { version: string };
+    expect(installed.version).toBe(CORE_API_VERSION);
   });
 
   it('analyzes the Rosetta fixture through the core barrel', () => {

@@ -590,18 +590,20 @@ dejar la spec exacta para la extensión de VS Code sin tocar su repositorio.
 
 ### Decisiones y límites
 
-- `smoke:pack` requiere red (el core se instala por SHA desde GitHub) y tarda
-  ~35 s; por eso cierra `npm run ci` pero `npm test` no lo corre. En una máquina
-  sin red, usar `npm test`.
+- `smoke:pack` requiere red (instala el core desde npm) y tarda ~35 s; por eso
+  cierra `npm run ci` pero `npm test` no lo corre. En una máquina sin red, usar
+  `npm test`.
 - **LICENSE resuelto**: MIT con titular colectivo `The Placitum Authors` en ambos
   repos, más un `AUTHORS` con los contribuidores (documenta el titular sin tocar
   la licencia cuando se sume gente). MIT no se registra en ningún lado: el
   archivo `LICENSE` + el campo `"license": "MIT"` son la concesión. El paquete
   sigue `private` (eso bloquea publicar, no licenciar).
-- **El core va pinneado por SHA**: el pin subió a `fd2dc7a` (merge de `dev`), que
-  agrega `LICENSE`/`AUTHORS` al tarball (`files` ahora incluye `AUTHORS`) sin
-  tocar `src/` ni `tests/` del core. `docs/CORE-VERSION.md` y
-  `CORE_API_VERSION` quedaron sincronizados con el nuevo SHA.
+- **El core se publicó en npm** (`placitum@1.0.0`, 2026-09-23) y pl-lsp migró de
+  `github:quesadx/pl-lg#sha` a `"placitum": "^1.0.0"`. Se ajustaron
+  `CORE_API_VERSION` (ahora versión, no SHA), `check-deps` (exige semver),
+  `docs/CORE-VERSION.md`, los fixtures del binder y el test del adapter (verifica
+  que coincida con la versión instalada). Ya no hay hashes que copiar: actualizar
+  es `npm update placitum`.
 - Se eliminó una autodependencia accidental `"placitum": "github:quesadx/pl-lg#…"`
   en el `package.json` del core: rompía `check-deps` y ningún archivo la usaba.
 - La revisión final del handoff y el `vsce package` pertenecen al repositorio de
