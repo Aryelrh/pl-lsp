@@ -18,6 +18,30 @@ function binderEnvelope(analysis: Analysis, diagnostic: BinderDiagnostic): Placi
   };
 }
 
+/** Quick-fix tags for code actions (§7.2); the handler still recomputes the edit. */
+const QUICK_FIX_TAGS: Record<string, string[]> = {
+  E101_LEX_UNTERMINATED_STRING: ['insert-closing-quote'],
+  E203_PARSE_UNTERMINATED_BLOCK: ['insert-closing-brace'],
+  E301_EXTRACT_UNCOVERED_CAPABILITY: ['add-needs'],
+  E500_EVAL_UNBOUND_VAR: ['declare-let'],
+  E506_EVAL_REDECLARATION: ['rename-binding'],
+};
+
+function quickFixTags(error: PlacitumError): string[] {
+  if (error.code === 'E104_LEX_UNEXPECTED_CHARACTER') {
+    return error.message.startsWith('Whitespace is not allowed') ? ['remove-bang-whitespace'] : [];
+  }
+  return QUICK_FIX_TAGS[error.code] ?? [];
+}
+
+function dataFor(error: PlacitumError): Record<string, unknown> {
+  const data: Record<string, unknown> = { phase: error.phase };
+  if (error.hint !== undefined) data['hint'] = error.hint;
+  const tags = quickFixTags(error);
+  if (tags.length > 0) data['quickFixes'] = tags;
+  return data;
+}
+
 function toDiagnostic(analysis: Analysis, error: PlacitumError): Diagnostic {
   return {
     range: errorRange(analysis.document, error),
@@ -25,7 +49,7 @@ function toDiagnostic(analysis: Analysis, error: PlacitumError): Diagnostic {
     code: error.code,
     source: 'placitum',
     message: error.hint !== undefined ? `${error.message}\n\nhint: ${error.hint}` : error.message,
-    data: error.hint !== undefined ? { phase: error.phase, hint: error.hint } : { phase: error.phase },
+    data: dataFor(error),
   };
 }
 

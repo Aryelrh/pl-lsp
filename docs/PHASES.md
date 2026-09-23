@@ -6,7 +6,7 @@ conceptos hay detrás**. Se actualiza al cerrar cada fase del plan de referencia
 el código, los mensajes y la documentación de producto van en inglés, como exige la
 directiva.
 
-- Estado actual: **Fases 0–4 completas** · `npm run ci` verde (210 tests)
+- Estado actual: **Fases 0–5 completas** · `npm run ci` verde (246 tests)
 - Cómo leer: cada fase tiene *Objetivo → Conceptos → Qué se construyó → Decisiones y
   límites → Tests y gate → Cómo probarlo a mano*.
 
@@ -377,28 +377,93 @@ identificadores de `needs`, f-strings) y E2E de Neovim con completion + hover ma
 
 ---
 
-## Fase 5 — UX de capabilities (pendiente)
+## Fase 5 — UX de capabilities
 
-**Estado:**  no iniciada.
+**Estado:**  completada.
 
-**Qué hará.** Code actions, code lens, el request custom `placitum/manifest` y los
-comandos `placitum.showManifest` / `placitum.reanalyze`, hover con cobertura/deferrals,
-e inlay hints.
+### Objetivo
 
-**Conceptos que se van a tocar.**
+Cerrar el ciclo de la capability UX: arreglar lo que el analizador reporta (quick
+fixes), explicarlo en el editor (code lens, inlay hints) y exponer el manifest real
+(`placitum/manifest` + comandos).
 
-- **Quick fixes deterministas**: insertar `needs` (calculando el token exacto, con
-  escaping), insertar `}` al EOF, renombrar ante E506; todo vía `WorkspaceEdit`.
-- **Add-needs**: leer el `NeedsDecl` existente para anexar el token, o insertar la
-  línea después del pragma; nunca duplicar grants.
-- **Code lens**: contadores de grants/deferrals sobre el `needs` y resumen de `only(...)`.
-- **Manifest**: `explain()` del core tal cual (nunca re-renderizar) para que el markdown
-  sea idéntico a `placitum explain`.
-- **Inlay hints**: tipos inferidos junto a los `let` y, opcionalmente, la cobertura de
-  cada bang call.
+### Conceptos
 
-**Gate.** Fixtures de capability verdes; el markdown de `placitum/manifest` idéntico
-byte a byte al `explain` del core para el fixture Rosetta.
+- **Quick fixes recomputados, nunca textuales.** Cada action se deriva del `Analysis`
+  y de los diagnósticos recalculados, no del texto que manda el cliente: el fix es
+  determinista y se entrega como `WorkspaceEdit` (el server jamás escribe archivos).
+  `E101` inserta la comilla de cierre al final de línea, `E104` borra el whitespace
+  entre el target y `!`, `E203` agrega `}` al EOF, `E500` declara con `let` (o define
+  `fn name()` si el nombre es un callee) y `E506` renombra al primer `name_N` libre
+  del scope.
+- **Add-`needs` (la fix insignia).** Se localiza el `BangCall` por span, se calcula el
+  token exactamente como lo haría el extractor (`net` con el hostname del `URL`
+  lowercased, `\\` y `\"` re-escapados en paths) y se anexa `, <token>` al último
+  `NeedsDecl` top-level, o se inserta `needs <token>` justo después del pragma / al
+  offset 0. Si el token ya existe no se ofrece nada. Nunca toca un `needs` de fn en
+  v1 (el top-level siempre es sound).
+- **E303 fuera de alcance.** El fix "reemplazar por el grant que cubre" es
+  inaplicable: el extractor aborta en E303, así que no hay manifest, y la propia
+  semántica de atenuación garantiza que ningún token del scope padre cubre al hijo.
+  Queda como el ítem opcional de la directiva.
+- **Code lens.** Un lens por `NeedsDecl` top-level (`N grants · M deferred — show
+  manifest`, con pluralización y `no grants` para cero) y uno por fn con `needs`
+  (`needs only(...)` truncado a ~60 chars). Los conteos salen del manifest del
+  extractor; si la extracción falló, se cuentan los tokens del AST. Sin parse no hay
+  lens.
+- **Inlay hints.** `: <tipo>` después de cada `let` con tipo inferido distinto de
+  `unknown`/`null`; cobertura `needs ...` después de un bang sólo si
+  `placitum.inlayHints.capabilities` está activo y el chequeo es
+  `statically-covered` (nunca deferred/ambient). Se filtran por el rango pedido.
+- **Manifest idéntico al core.** `placitum/manifest` devuelve
+  `{ markdown, manifest, diagnostics }`; el markdown es `explain()` del core tal cual
+  (cero re-render). Sin manifest, lista los diagnósticos y pide arreglar la causa
+  (sintaxis vs. capabilities).
+- **Comandos.** `placitum.showManifest` manda el markdown por `window/showMessage` con
+  cap de 10 KB (el texto completo va al log); `placitum.reanalyze` re-analiza y
+  republica; `placitum.addNeeds` aplica la fix del primer E301 vía
+  `workspace/applyEdit`.
+- **Tags de quick fix.** `data.quickFixes` en cada diagnóstico es la pista que el
+  cliente puede mostrar; el handler igual recomputa el edit.
+
+### Qué se construyó
+
+| Archivo | Responsabilidad |
+|---|---|
+| `src/features/code-actions.ts` | Quick fixes E101/E104/E203/E301/E500/E506 + action de comando. |
+| `src/features/code-lens.ts` | Lentes de `needs` top-level y de fns atenuadas. |
+| `src/features/inlay-hints.ts` | Tipos de `let` y cobertura de bangs. |
+| `src/features/manifest-command.ts` | Payload de `placitum/manifest`, fallback y cap de mensaje. |
+| `src/analysis/core-adapter.ts` | `explainManifest()` (renderer del core). |
+| `src/features/diagnostics.ts` | `data.quickFixes` por código. |
+| `src/server.ts` | Providers, `placitum/manifest`, `onExecuteCommand`. |
+| `tests/fixtures/expected/manifest-rosetta.json` | Golden del payload completo. |
+
+### Decisiones y límites
+
+- El fix E303 de la directiva se omitió por inaplicable (ver Conceptos); era
+  explícitamente opcional.
+- `placitum.addNeeds` resuelve el **primer** E301 del documento: el extractor aborta
+  en el primero, así que en la práctica es el único.
+- `placitum.explainDeferred` no se implementó: el hover de bang ya muestra el motivo
+  del deferral (y no está en el contrato de comandos de `initialize`).
+- El code lens de un `needs` con extracción fallida muestra `0 deferred` (el
+  extractor no llegó a poblarlos); los grants se cuentan del AST.
+
+### Gate
+
+246 tests verdes; `placitum/manifest` idéntico byte a byte al `explain` del core para
+Rosetta (test unitario contra el core + golden del payload); add-needs cubierto en
+sus seis variantes (sin needs, con needs, pragma, duplicado, hostname lowercased,
+escaping).
+
+### Cómo probarlo a mano
+
+```sh
+# Neovim: en un bang sin cobertura, :lua vim.lsp.buf.code_action() -> Add needs ...
+# :lua vim.lsp.buf.code_lens() en un needs; :PlacitumManifest para el manifest.
+# Inlay hints: habilitar placitum.inlayHints.enable en la config del cliente.
+```
 
 ---
 

@@ -18,7 +18,10 @@
       "message": "String literal is not closed before end of line/input.\n\nhint: Close the string with a matching \".",
       "data": {
         "phase": "lex",
-        "hint": "Close the string with a matching \"."
+        "hint": "Close the string with a matching \".",
+        "quickFixes": [
+          "insert-closing-quote"
+        ]
       }
     }
   ],

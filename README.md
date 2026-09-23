@@ -13,7 +13,7 @@ and exposes it over JSON-RPC on stdio, so any spec-compliant editor works.
 
 ## Status
 
-Phases 0–4 complete. The repository scaffold is in place (strict TypeScript, ESLint
+Phases 0–5 complete. The repository scaffold is in place (strict TypeScript, ESLint
 import boundaries, dependency allow-list, pinned core `placitum`), and the server runs
 over stdio: lifecycle, incremental document sync, per-version analysis cache, debounced
 push diagnostics, `workspace/configuration` + `initializationOptions` settings, and
@@ -26,10 +26,13 @@ flat), and capped on-demand workspace symbols with an mtime cache and watched-fi
 invalidation. Intelligence is live too: context-aware completion, hover (bindings,
 builtins, members, bang coverage, capability tokens, keywords), signature help (with pipe
 prepend), full semantic tokens, folding, selection ranges and document highlights — all
-with fallbacks that keep working on half-typed files.
-`npm run ci` is green (typecheck, lint, build, 210 unit/protocol/e2e tests, including a
-stdout-purity check and Neovim E2E for rename, completion and hover). Capability UX lands
-in phase 5 following the directive.
+with fallbacks that keep working on half-typed files. Capability UX is live: deterministic
+quick fixes (add `needs`, insert `}`, declare with `let`, rename redeclarations), code lens
+over `needs` clauses, optional inlay hints, the custom `placitum/manifest` request whose
+markdown is the core `explain` output byte for byte, and the commands
+`placitum.showManifest` / `placitum.reanalyze` / `placitum.addNeeds`.
+`npm run ci` is green (typecheck, lint, build, 246 unit/protocol/e2e tests, including a
+stdout-purity check and Neovim E2E for rename, completion and hover).
 
 ## Features
 
