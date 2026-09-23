@@ -223,6 +223,10 @@ npm run ci        # check-deps -> tsc --noEmit -> eslint -> build -> vitest -> e
 npm test          # vitest run
 ```
 
+For manual testing there is a git-ignored `playground/` (Zed project settings that
+redirect a built-in language server to `placitum-lsp`, an isolated Neovim launcher, and
+demo files for clean/error/syntax cases); see `playground/README.md`.
+
 Layout (target, per directive):
 
 ```
