@@ -195,6 +195,97 @@ describe('pull diagnostics', () => {
     expect(changed.resultId).not.toBe(full.resultId);
     server.dispose();
   });
+
+  it('asks the client to refresh after a config change instead of relying on push', async () => {
+    const server = createTestClient();
+    let settings: Record<string, unknown> = {};
+    server.connection.onRequest('workspace/configuration', (params: unknown) => {
+      return (params as { items: unknown[] }).items.map(() => settings);
+    });
+    const refreshRequests: unknown[] = [];
+    server.connection.onRequest('workspace/diagnostic/refresh', (params: unknown) => {
+      refreshRequests.push(params);
+      return null;
+    });
+    await server.initialize({
+      textDocument: { diagnostic: {} },
+      workspace: { configuration: true, diagnostics: { refreshSupport: true } },
+    });
+
+    open(server, 'let copy = missing_name\n');
+    const first = (await server.connection.sendRequest('textDocument/diagnostic', {
+      textDocument: { uri: URI },
+    })) as FullDocumentDiagnosticReport;
+    expect(first.items.map((diagnostic) => diagnostic.code)).toContain('E500_EVAL_UNBOUND_VAR');
+
+    settings = { diagnostics: { scope: false } };
+    server.connection.sendNotification('workspace/didChangeConfiguration', { settings });
+    await waitUntil(() => refreshRequests.length > 0);
+
+    const after = (await server.connection.sendRequest('textDocument/diagnostic', {
+      textDocument: { uri: URI },
+      previousResultId: first.resultId,
+    })) as FullDocumentDiagnosticReport;
+    expect(after.kind).toBe('full');
+    expect(after.resultId).not.toBe(first.resultId);
+    expect(after.items.map((diagnostic) => diagnostic.code)).not.toContain('E500_EVAL_UNBOUND_VAR');
+    server.dispose();
+  });
+
+  it('does not send refresh to a pull client that lacks refreshSupport', async () => {
+    const server = createTestClient();
+    let settings: Record<string, unknown> = {};
+    server.connection.onRequest('workspace/configuration', (params: unknown) => {
+      return (params as { items: unknown[] }).items.map(() => settings);
+    });
+    const refreshRequests: unknown[] = [];
+    server.connection.onRequest('workspace/diagnostic/refresh', (params: unknown) => {
+      refreshRequests.push(params);
+      return null;
+    });
+    // Pull without workspace.diagnostics.refreshSupport.
+    await server.initialize({ textDocument: { diagnostic: {} }, workspace: { configuration: true } });
+
+    open(server, 'let copy = missing_name\n');
+    settings = { diagnostics: { scope: false } };
+    server.connection.sendNotification('workspace/didChangeConfiguration', { settings });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(refreshRequests).toEqual([]);
+    // The server still answers pulls after the change.
+    const report = (await server.connection.sendRequest('textDocument/diagnostic', {
+      textDocument: { uri: URI },
+    })) as FullDocumentDiagnosticReport;
+    expect(report.kind).toBe('full');
+    server.dispose();
+  });
+});
+
+describe('push diagnostics after config change', () => {
+  it('re-publishes diagnostics for push-only clients', async () => {
+    const server = createTestClient();
+    let settings: Record<string, unknown> = {};
+    server.connection.onRequest('workspace/configuration', (params: unknown) => {
+      return (params as { items: unknown[] }).items.map(() => settings);
+    });
+    const published: PublishDiagnosticsParams[] = [];
+    server.connection.onNotification('textDocument/publishDiagnostics', (params: PublishDiagnosticsParams) => {
+      published.push(params);
+    });
+    // No textDocument.diagnostic capability: push-only.
+    await server.initialize({ workspace: { configuration: true } });
+
+    open(server, 'let copy = missing_name\n');
+    await waitUntil(() => published.length > 0);
+    expect(published[0]?.diagnostics.map((diagnostic) => diagnostic.code)).toContain('E500_EVAL_UNBOUND_VAR');
+
+    const countBefore = published.length;
+    settings = { diagnostics: { scope: false } };
+    server.connection.sendNotification('workspace/didChangeConfiguration', { settings });
+    await waitUntil(() => published.length > countBefore);
+    expect(published.at(-1)?.diagnostics.map((diagnostic) => diagnostic.code)).not.toContain('E500_EVAL_UNBOUND_VAR');
+    server.dispose();
+  });
 });
 
 describe('multi-root workspace symbols', () => {

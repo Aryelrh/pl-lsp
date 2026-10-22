@@ -175,18 +175,27 @@ export function createServer(connection: Connection, options: ServerOptions): vo
   documents.listen();
   applyTrace(connection, log);
 
-  const applyConfig = (raw: unknown): void => {
+  const applyConfig = (raw: unknown, refreshDiagnostics = false): void => {
     config = resolveConfig(raw, config);
     workspaceIndex = null;
     documents.setConfig(config);
+    // Pull clients ignore pushed diagnostics, so after a config change they must
+    // be told to re-pull. Only do so when they declared the refresh request.
+    if (refreshDiagnostics && capabilities?.workspace?.diagnostics?.refreshSupport === true) {
+      // refresh() is typed `void` but returns the sendRequest promise; catch it so
+      // a client that errors on the request can't crash the server.
+      void (connection.languages.diagnostics.refresh() as unknown as Promise<void>).catch((error: unknown) =>
+        log.error('diagnostic refresh failed', error),
+      );
+    }
   };
 
   const analysisAt = (uri: string): Analysis | undefined => documents.analysisFor(uri);
 
-  const pullConfiguration = (): void => {
+  const pullConfiguration = (refreshDiagnostics = false): void => {
     if (capabilities?.workspace?.configuration !== true) return;
     void connection.workspace.getConfiguration('placitum').then(
-      (value: unknown) => applyConfig(value),
+      (value: unknown) => applyConfig(value, refreshDiagnostics),
       (error: unknown) => log.error('workspace/configuration failed', error),
     );
   };
@@ -210,7 +219,7 @@ export function createServer(connection: Connection, options: ServerOptions): vo
   });
 
   connection.onDidChangeConfiguration(() => {
-    pullConfiguration();
+    pullConfiguration(true);
   });
 
   connection.onDidChangeWatchedFiles((params) => {
