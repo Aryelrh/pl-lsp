@@ -354,6 +354,92 @@ describe('pull clients do not also receive push', () => {
   });
 });
 
+describe('placitum.reanalyze with pull diagnostics', () => {
+  it('refreshes a pull client that declares refreshSupport', async () => {
+    const server = createTestClient();
+    const published: PublishDiagnosticsParams[] = [];
+    server.connection.onNotification('textDocument/publishDiagnostics', (params: PublishDiagnosticsParams) => {
+      published.push(params);
+    });
+    const refreshRequests: unknown[] = [];
+    server.connection.onRequest('workspace/diagnostic/refresh', (params: unknown) => {
+      refreshRequests.push(params);
+      return null;
+    });
+    await server.initialize({ textDocument: { diagnostic: {} }, workspace: { diagnostics: { refreshSupport: true } } });
+
+    open(server, 'let copy = missing_name\n');
+    await server.connection.sendRequest('workspace/executeCommand', {
+      command: 'placitum.reanalyze',
+      arguments: [URI],
+    });
+    await waitUntil(() => refreshRequests.length > 0);
+
+    const report = (await server.connection.sendRequest('textDocument/diagnostic', {
+      textDocument: { uri: URI },
+    })) as FullDocumentDiagnosticReport;
+    expect(report.kind).toBe('full');
+    expect(report.items.map((diagnostic) => diagnostic.code)).toEqual(['E500_EVAL_UNBOUND_VAR']);
+    expect(published).toEqual([]);
+    server.dispose();
+  });
+
+  it('does not refresh a pull client that lacks refreshSupport but still answers pulls', async () => {
+    const server = createTestClient();
+    const refreshRequests: unknown[] = [];
+    server.connection.onRequest('workspace/diagnostic/refresh', (params: unknown) => {
+      refreshRequests.push(params);
+      return null;
+    });
+    await server.initialize({ textDocument: { diagnostic: {} } });
+
+    open(server, 'let copy = missing_name\n');
+    await server.connection.sendRequest('workspace/executeCommand', {
+      command: 'placitum.reanalyze',
+      arguments: [URI],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(refreshRequests).toEqual([]);
+
+    const report = (await server.connection.sendRequest('textDocument/diagnostic', {
+      textDocument: { uri: URI },
+    })) as FullDocumentDiagnosticReport;
+    expect(report.kind).toBe('full');
+    expect(report.items.map((diagnostic) => diagnostic.code)).toEqual(['E500_EVAL_UNBOUND_VAR']);
+    server.dispose();
+  });
+
+  it('keeps publishing to push-only clients and sends no refresh', async () => {
+    const server = createTestClient();
+    const published: PublishDiagnosticsParams[] = [];
+    server.connection.onNotification('textDocument/publishDiagnostics', (params: PublishDiagnosticsParams) => {
+      published.push(params);
+    });
+    const refreshRequests: unknown[] = [];
+    server.connection.onRequest('workspace/diagnostic/refresh', (params: unknown) => {
+      refreshRequests.push(params);
+      return null;
+    });
+    await server.initialize({});
+
+    open(server, 'let copy = missing_name\n');
+    await waitUntil(() => published.length > 0);
+    const countBefore = published.length;
+    await server.connection.sendRequest('workspace/executeCommand', {
+      command: 'placitum.reanalyze',
+      arguments: [URI],
+    });
+    await waitUntil(() => published.length > countBefore);
+    expect(published.at(-1)?.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
+      'E500_EVAL_UNBOUND_VAR',
+    ]);
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(refreshRequests).toEqual([]);
+    server.dispose();
+  });
+});
+
 describe('inlay hint refresh after config change', () => {
   it('asks the client to refresh when it declares refreshSupport', async () => {
     const server = createTestClient();

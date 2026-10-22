@@ -184,6 +184,12 @@ export function createServer(connection: Connection, options: ServerOptions): vo
     void Promise.resolve(send()).catch((error: unknown) => log.error(`${name} refresh failed`, error));
   };
 
+  const refreshPullDiagnostics = (): void => {
+    sendRefresh(capabilities?.workspace?.diagnostics?.refreshSupport, 'diagnostic', () =>
+      connection.languages.diagnostics.refresh(),
+    );
+  };
+
   const applyConfig = (raw: unknown, refreshDiagnostics = false): void => {
     config = resolveConfig(raw, config);
     workspaceIndex = null;
@@ -191,9 +197,7 @@ export function createServer(connection: Connection, options: ServerOptions): vo
     // Pull clients ignore pushed results, so after a config change they must be
     // told to re-pull. Only do so when they declared the refresh request.
     if (refreshDiagnostics) {
-      sendRefresh(capabilities?.workspace?.diagnostics?.refreshSupport, 'diagnostic', () =>
-        connection.languages.diagnostics.refresh(),
-      );
+      refreshPullDiagnostics();
       sendRefresh(capabilities?.workspace?.inlayHint?.refreshSupport, 'inlay hint', () =>
         connection.languages.inlayHint.refresh(),
       );
@@ -472,7 +476,12 @@ export function createServer(connection: Connection, options: ServerOptions): vo
           return;
         }
         case 'placitum.reanalyze':
+          // reanalyze() recomputes and caches synchronously, so the pull state is
+          // fresh by the time we ask pull clients to re-read it. Push-only clients
+          // keep the publish from analyzeAndPublish; pull clients without
+          // refreshSupport cannot be notified (known limitation).
           documents.reanalyze(uri);
+          refreshPullDiagnostics();
           return;
         case 'placitum.addNeeds': {
           const analysis = analysisAt(uri);
