@@ -288,6 +288,72 @@ describe('push diagnostics after config change', () => {
   });
 });
 
+describe('pull clients do not also receive push', () => {
+  it('suppresses publishDiagnostics on didOpen but keeps the pull report', async () => {
+    const server = createTestClient();
+    const published: PublishDiagnosticsParams[] = [];
+    server.connection.onNotification('textDocument/publishDiagnostics', (params: PublishDiagnosticsParams) => {
+      published.push(params);
+    });
+    await server.initialize({ textDocument: { diagnostic: {} } });
+
+    open(server, 'let copy = missing_name\n');
+    const report = (await server.connection.sendRequest('textDocument/diagnostic', {
+      textDocument: { uri: URI },
+    })) as FullDocumentDiagnosticReport;
+    expect(report.kind).toBe('full');
+    expect(report.items.map((diagnostic) => diagnostic.code)).toEqual(['E500_EVAL_UNBOUND_VAR']);
+
+    // The 80 ms push debounce has time to run; it must stay silent for pull clients.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(published).toEqual([]);
+    server.dispose();
+  });
+
+  it('suppresses push after a config change but still refreshes the pull', async () => {
+    const server = createTestClient();
+    let settings: Record<string, unknown> = {};
+    server.connection.onRequest('workspace/configuration', (params: unknown) => {
+      return (params as { items: unknown[] }).items.map(() => settings);
+    });
+    const published: PublishDiagnosticsParams[] = [];
+    server.connection.onNotification('textDocument/publishDiagnostics', (params: PublishDiagnosticsParams) => {
+      published.push(params);
+    });
+    const refreshRequests: unknown[] = [];
+    server.connection.onRequest('workspace/diagnostic/refresh', (params: unknown) => {
+      refreshRequests.push(params);
+      return null;
+    });
+    await server.initialize({
+      textDocument: { diagnostic: {} },
+      workspace: { configuration: true, diagnostics: { refreshSupport: true } },
+    });
+
+    open(server, 'let copy = missing_name\n');
+    const first = (await server.connection.sendRequest('textDocument/diagnostic', {
+      textDocument: { uri: URI },
+    })) as FullDocumentDiagnosticReport;
+    expect(first.items.map((diagnostic) => diagnostic.code)).toContain('E500_EVAL_UNBOUND_VAR');
+
+    settings = { diagnostics: { scope: false } };
+    server.connection.sendNotification('workspace/didChangeConfiguration', { settings });
+    await waitUntil(() => refreshRequests.length > 0);
+
+    // Let the deferred re-analysis run; it must not push to a pull client.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(published).toEqual([]);
+
+    const after = (await server.connection.sendRequest('textDocument/diagnostic', {
+      textDocument: { uri: URI },
+      previousResultId: first.resultId,
+    })) as FullDocumentDiagnosticReport;
+    expect(after.kind).toBe('full');
+    expect(after.items).toEqual([]);
+    server.dispose();
+  });
+});
+
 describe('inlay hint refresh after config change', () => {
   it('asks the client to refresh when it declares refreshSupport', async () => {
     const server = createTestClient();

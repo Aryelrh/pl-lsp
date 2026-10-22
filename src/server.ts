@@ -68,7 +68,7 @@ function placitumSection(initializationOptions: unknown): unknown {
   return isRecord(initializationOptions) ? initializationOptions['placitum'] : undefined;
 }
 
-function initializeResult(capabilities: ClientCapabilities | undefined): InitializeResult {
+function initializeResult(supportsPullDiagnostics: boolean): InitializeResult {
   const result: InitializeResult = {
     capabilities: {
       positionEncoding: 'utf-16',
@@ -103,7 +103,7 @@ function initializeResult(capabilities: ClientCapabilities | undefined): Initial
     serverInfo: { name: 'placitum-lsp', version: VERSION },
   };
   // Pull diagnostics only for clients that support them; everyone else keeps push.
-  if (capabilities?.textDocument?.diagnostic !== undefined) {
+  if (supportsPullDiagnostics) {
     result.capabilities.diagnosticProvider = { interFileDependencies: false, workspaceDiagnostics: false };
   }
   return result;
@@ -170,6 +170,7 @@ export function createServer(connection: Connection, options: ServerOptions): vo
   const log = options.log;
   let config = options.config ?? DEFAULT_CONFIG;
   let capabilities: ClientCapabilities | undefined;
+  let clientSupportsPullDiagnostics = false;
   let roots: string[] = [];
   let workspaceIndex: WorkspaceIndex | null = null;
   const documents = new Documents(connection, log, config);
@@ -214,10 +215,13 @@ export function createServer(connection: Connection, options: ServerOptions): vo
 
   connection.onInitialize((params) => {
     capabilities = params.capabilities;
+    clientSupportsPullDiagnostics = capabilities?.textDocument?.diagnostic !== undefined;
+    // Pull clients own their diagnostic collection; pushing as well would duplicate entries.
+    documents.setPullDiagnostics(clientSupportsPullDiagnostics);
     roots = rootPaths(params);
     applyConfig(placitumSection(params.initializationOptions));
     log.info(`initialize (client=${params.clientInfo?.name ?? 'unknown'}, roots=${roots.length})`);
-    return initializeResult(capabilities);
+    return initializeResult(clientSupportsPullDiagnostics);
   });
 
   connection.onInitialized(() => {
