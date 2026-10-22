@@ -190,13 +190,9 @@ export function createServer(connection: Connection, options: ServerOptions): vo
     // Pull clients ignore pushed results, so after a config change they must be
     // told to re-pull. Only do so when they declared the refresh request.
     if (refreshDiagnostics) {
-      if (capabilities?.workspace?.diagnostics?.refreshSupport === true) {
-        // refresh() is typed `void` but returns the sendRequest promise; catch it so
-        // a client that errors on the request can't crash the server.
-        void (connection.languages.diagnostics.refresh() as unknown as Promise<void>).catch((error: unknown) =>
-          log.error('diagnostic refresh failed', error),
-        );
-      }
+      sendRefresh(capabilities?.workspace?.diagnostics?.refreshSupport, 'diagnostic', () =>
+        connection.languages.diagnostics.refresh(),
+      );
       sendRefresh(capabilities?.workspace?.inlayHint?.refreshSupport, 'inlay hint', () =>
         connection.languages.inlayHint.refresh(),
       );
