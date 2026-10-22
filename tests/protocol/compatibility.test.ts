@@ -288,6 +288,103 @@ describe('push diagnostics after config change', () => {
   });
 });
 
+describe('inlay hint refresh after config change', () => {
+  it('asks the client to refresh when it declares refreshSupport', async () => {
+    const server = createTestClient();
+    let settings: Record<string, unknown> = {};
+    server.connection.onRequest('workspace/configuration', (params: unknown) => {
+      return (params as { items: unknown[] }).items.map(() => settings);
+    });
+    const refreshRequests: unknown[] = [];
+    server.connection.onRequest('workspace/inlayHint/refresh', (params: unknown) => {
+      refreshRequests.push(params);
+      return null;
+    });
+    await server.initialize({ workspace: { configuration: true, inlayHint: { refreshSupport: true } } });
+
+    open(server, rosetta);
+    settings = { inlayHints: { enable: true } };
+    server.connection.sendNotification('workspace/didChangeConfiguration', { settings });
+    await waitUntil(() => refreshRequests.length > 0);
+    server.dispose();
+  });
+
+  it('does not send refresh to a client that lacks refreshSupport', async () => {
+    const server = createTestClient();
+    let settings: Record<string, unknown> = {};
+    server.connection.onRequest('workspace/configuration', (params: unknown) => {
+      return (params as { items: unknown[] }).items.map(() => settings);
+    });
+    const refreshRequests: unknown[] = [];
+    server.connection.onRequest('workspace/inlayHint/refresh', (params: unknown) => {
+      refreshRequests.push(params);
+      return null;
+    });
+    await server.initialize({ workspace: { configuration: true } });
+
+    open(server, rosetta);
+    settings = { inlayHints: { enable: true } };
+    server.connection.sendNotification('workspace/didChangeConfiguration', { settings });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(refreshRequests).toEqual([]);
+
+    const hints = (await server.connection.sendRequest('textDocument/inlayHint', {
+      textDocument: { uri: URI },
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 42 } },
+    })) as unknown[];
+    expect(Array.isArray(hints)).toBe(true);
+    server.dispose();
+  });
+});
+
+describe('code lens refresh after config change', () => {
+  it('asks the client to refresh when it declares refreshSupport', async () => {
+    const server = createTestClient();
+    let settings: Record<string, unknown> = {};
+    server.connection.onRequest('workspace/configuration', (params: unknown) => {
+      return (params as { items: unknown[] }).items.map(() => settings);
+    });
+    const refreshRequests: unknown[] = [];
+    server.connection.onRequest('workspace/codeLens/refresh', (params: unknown) => {
+      refreshRequests.push(params);
+      return null;
+    });
+    await server.initialize({ workspace: { configuration: true, codeLens: { refreshSupport: true } } });
+
+    open(server, rosetta);
+    settings = { codeLens: { enable: false } };
+    server.connection.sendNotification('workspace/didChangeConfiguration', { settings });
+    await waitUntil(() => refreshRequests.length > 0);
+    server.dispose();
+  });
+
+  it('does not send refresh to a client that lacks refreshSupport', async () => {
+    const server = createTestClient();
+    let settings: Record<string, unknown> = {};
+    server.connection.onRequest('workspace/configuration', (params: unknown) => {
+      return (params as { items: unknown[] }).items.map(() => settings);
+    });
+    const refreshRequests: unknown[] = [];
+    server.connection.onRequest('workspace/codeLens/refresh', (params: unknown) => {
+      refreshRequests.push(params);
+      return null;
+    });
+    await server.initialize({ workspace: { configuration: true } });
+
+    open(server, rosetta);
+    settings = { codeLens: { enable: false } };
+    server.connection.sendNotification('workspace/didChangeConfiguration', { settings });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(refreshRequests).toEqual([]);
+
+    const lenses = (await server.connection.sendRequest('textDocument/codeLens', {
+      textDocument: { uri: URI },
+    })) as unknown[];
+    expect(Array.isArray(lenses)).toBe(true);
+    server.dispose();
+  });
+});
+
 describe('multi-root workspace symbols', () => {
   it('rescans when folders are added and prefixes container names', async () => {
     const dirA = mkdtempSync(join(tmpdir(), 'placitum-lsp-root-a-'));

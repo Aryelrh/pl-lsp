@@ -2,6 +2,7 @@
 import { fileURLToPath } from 'node:url';
 import {
   CodeActionKind,
+  CodeLensRefreshRequest,
   DidChangeWatchedFilesNotification,
   DidChangeWorkspaceFoldersNotification,
   MarkupKind,
@@ -175,17 +176,32 @@ export function createServer(connection: Connection, options: ServerOptions): vo
   documents.listen();
   applyTrace(connection, log);
 
+  // Send a workspace refresh request, swallowing `void` and `Promise` alike so no
+  // cast is needed and a client that errors on the request can't crash the server.
+  const sendRefresh = (supported: boolean | undefined, name: string, send: () => unknown): void => {
+    if (supported !== true) return;
+    void Promise.resolve(send()).catch((error: unknown) => log.error(`${name} refresh failed`, error));
+  };
+
   const applyConfig = (raw: unknown, refreshDiagnostics = false): void => {
     config = resolveConfig(raw, config);
     workspaceIndex = null;
     documents.setConfig(config);
-    // Pull clients ignore pushed diagnostics, so after a config change they must
-    // be told to re-pull. Only do so when they declared the refresh request.
-    if (refreshDiagnostics && capabilities?.workspace?.diagnostics?.refreshSupport === true) {
-      // refresh() is typed `void` but returns the sendRequest promise; catch it so
-      // a client that errors on the request can't crash the server.
-      void (connection.languages.diagnostics.refresh() as unknown as Promise<void>).catch((error: unknown) =>
-        log.error('diagnostic refresh failed', error),
+    // Pull clients ignore pushed results, so after a config change they must be
+    // told to re-pull. Only do so when they declared the refresh request.
+    if (refreshDiagnostics) {
+      if (capabilities?.workspace?.diagnostics?.refreshSupport === true) {
+        // refresh() is typed `void` but returns the sendRequest promise; catch it so
+        // a client that errors on the request can't crash the server.
+        void (connection.languages.diagnostics.refresh() as unknown as Promise<void>).catch((error: unknown) =>
+          log.error('diagnostic refresh failed', error),
+        );
+      }
+      sendRefresh(capabilities?.workspace?.inlayHint?.refreshSupport, 'inlay hint', () =>
+        connection.languages.inlayHint.refresh(),
+      );
+      sendRefresh(capabilities?.workspace?.codeLens?.refreshSupport, 'code lens', () =>
+        connection.sendRequest(CodeLensRefreshRequest.type),
       );
     }
   };
