@@ -15,6 +15,7 @@ export class Documents {
   private readonly analyses = new Map<string, Analysis>();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private config: PlacitumConfig;
+  private pullDiagnostics = false;
 
   constructor(
     private readonly connection: Connection,
@@ -73,6 +74,14 @@ export class Documents {
     for (const uri of this.sync.keys()) this.schedule(uri);
   }
 
+  /**
+   * Pull clients keep their own diagnostic collection; pushing as well makes VS
+   * Code render every diagnostic twice because it unions both collections.
+   */
+  setPullDiagnostics(pull: boolean): void {
+    this.pullDiagnostics = pull;
+  }
+
   private schedule(uri: string): void {
     const pending = this.timers.get(uri);
     if (pending !== undefined) clearTimeout(pending);
@@ -106,6 +115,7 @@ export class Documents {
   }
 
   private publish(uri: string, diagnostics: Diagnostic[], version: number | undefined): void {
+    if (this.pullDiagnostics) return;
     try {
       this.connection.sendDiagnostics(version === undefined ? { uri, diagnostics } : { uri, diagnostics, version });
     } catch (error) {

@@ -16,7 +16,7 @@ enough to be useful. Everything else degrades gracefully:
 | Feature | Client capability that enables it | Behavior without it | Verified by |
 |---|---|---|---|
 | Diagnostics (push) | `textDocument.publishDiagnostics` | Still analyzed; the server just publishes | `diagnostics.test.ts` |
-| Diagnostics (pull) | `textDocument.diagnostic` (LSP 3.17) | No `diagnosticProvider` is advertised; push covers the client | `compatibility.test.ts` |
+| Diagnostics (pull) | `textDocument.diagnostic` (LSP 3.17) | No `diagnosticProvider` is advertised; push covers the client. When pull is negotiated, push is suppressed because clients like VS Code union separate push/pull collections and would otherwise show every diagnostic twice | `compatibility.test.ts` |
 | Incremental sync | `textDocument.sync` | The server declares `change: 2`; full-text `didChange` also works | `lifecycle.test.ts` |
 | Settings | `workspace.configuration` | `initializationOptions.placitum` or defaults; no config request is sent | `compatibility.test.ts` |
 | Watched-file invalidation | `workspace.didChangeWatchedFiles.dynamicRegistration` | No registration; workspace-symbol cache invalidates on the next scan (mtime) | `compatibility.test.ts` |

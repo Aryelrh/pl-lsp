@@ -2,6 +2,7 @@
 import { fileURLToPath } from 'node:url';
 import {
   CodeActionKind,
+  CodeLensRefreshRequest,
   DidChangeWatchedFilesNotification,
   DidChangeWorkspaceFoldersNotification,
   MarkupKind,
@@ -67,7 +68,7 @@ function placitumSection(initializationOptions: unknown): unknown {
   return isRecord(initializationOptions) ? initializationOptions['placitum'] : undefined;
 }
 
-function initializeResult(capabilities: ClientCapabilities | undefined): InitializeResult {
+function initializeResult(supportsPullDiagnostics: boolean): InitializeResult {
   const result: InitializeResult = {
     capabilities: {
       positionEncoding: 'utf-16',
@@ -102,7 +103,7 @@ function initializeResult(capabilities: ClientCapabilities | undefined): Initial
     serverInfo: { name: 'placitum-lsp', version: VERSION },
   };
   // Pull diagnostics only for clients that support them; everyone else keeps push.
-  if (capabilities?.textDocument?.diagnostic !== undefined) {
+  if (supportsPullDiagnostics) {
     result.capabilities.diagnosticProvider = { interFileDependencies: false, workspaceDiagnostics: false };
   }
   return result;
@@ -169,34 +170,62 @@ export function createServer(connection: Connection, options: ServerOptions): vo
   const log = options.log;
   let config = options.config ?? DEFAULT_CONFIG;
   let capabilities: ClientCapabilities | undefined;
+  let clientSupportsPullDiagnostics = false;
   let roots: string[] = [];
   let workspaceIndex: WorkspaceIndex | null = null;
   const documents = new Documents(connection, log, config);
   documents.listen();
   applyTrace(connection, log);
 
-  const applyConfig = (raw: unknown): void => {
+  // Send a workspace refresh request, swallowing `void` and `Promise` alike so no
+  // cast is needed and a client that errors on the request can't crash the server.
+  const sendRefresh = (supported: boolean | undefined, name: string, send: () => unknown): void => {
+    if (supported !== true) return;
+    void Promise.resolve(send()).catch((error: unknown) => log.error(`${name} refresh failed`, error));
+  };
+
+  const refreshPullDiagnostics = (): void => {
+    sendRefresh(capabilities?.workspace?.diagnostics?.refreshSupport, 'diagnostic', () =>
+      connection.languages.diagnostics.refresh(),
+    );
+  };
+
+  const applyConfig = (raw: unknown, refreshDiagnostics = false): void => {
     config = resolveConfig(raw, config);
     workspaceIndex = null;
     documents.setConfig(config);
+    // Pull clients ignore pushed results, so after a config change they must be
+    // told to re-pull. Only do so when they declared the refresh request.
+    if (refreshDiagnostics) {
+      refreshPullDiagnostics();
+      sendRefresh(capabilities?.workspace?.inlayHint?.refreshSupport, 'inlay hint', () =>
+        connection.languages.inlayHint.refresh(),
+      );
+      sendRefresh(capabilities?.workspace?.codeLens?.refreshSupport, 'code lens', () =>
+        connection.sendRequest(CodeLensRefreshRequest.type),
+      );
+    }
   };
 
   const analysisAt = (uri: string): Analysis | undefined => documents.analysisFor(uri);
 
-  const pullConfiguration = (): void => {
+  const pullConfiguration = (refreshDiagnostics = false): void => {
     if (capabilities?.workspace?.configuration !== true) return;
     void connection.workspace.getConfiguration('placitum').then(
-      (value: unknown) => applyConfig(value),
+      (value: unknown) => applyConfig(value, refreshDiagnostics),
       (error: unknown) => log.error('workspace/configuration failed', error),
     );
   };
 
   connection.onInitialize((params) => {
     capabilities = params.capabilities;
+    clientSupportsPullDiagnostics = capabilities?.textDocument?.diagnostic !== undefined;
+    // Pull clients own their diagnostic collection; pushing as well would duplicate entries.
+    documents.setPullDiagnostics(clientSupportsPullDiagnostics);
     roots = rootPaths(params);
     applyConfig(placitumSection(params.initializationOptions));
     log.info(`initialize (client=${params.clientInfo?.name ?? 'unknown'}, roots=${roots.length})`);
-    return initializeResult(capabilities);
+    return initializeResult(clientSupportsPullDiagnostics);
   });
 
   connection.onInitialized(() => {
@@ -210,7 +239,7 @@ export function createServer(connection: Connection, options: ServerOptions): vo
   });
 
   connection.onDidChangeConfiguration(() => {
-    pullConfiguration();
+    pullConfiguration(true);
   });
 
   connection.onDidChangeWatchedFiles((params) => {
@@ -447,7 +476,12 @@ export function createServer(connection: Connection, options: ServerOptions): vo
           return;
         }
         case 'placitum.reanalyze':
+          // reanalyze() recomputes and caches synchronously, so the pull state is
+          // fresh by the time we ask pull clients to re-read it. Push-only clients
+          // keep the publish from analyzeAndPublish; pull clients without
+          // refreshSupport cannot be notified (known limitation).
           documents.reanalyze(uri);
+          refreshPullDiagnostics();
           return;
         case 'placitum.addNeeds': {
           const analysis = analysisAt(uri);
