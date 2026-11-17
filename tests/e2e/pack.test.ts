@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { VERSION } from '../../src/version.js';
 
 interface PackResult {
   name: string;
@@ -30,7 +31,7 @@ describe.skipIf(!hasDist)('npm pack contents', () => {
     const result = pack();
     const paths = result.files.map((file) => file.path);
     expect(result.name).toBe('placitum-lsp');
-    expect(result.version).toBe('0.1.0');
+    expect(result.version).toBe(VERSION);
     for (const required of [
       'package.json',
       'README.md',

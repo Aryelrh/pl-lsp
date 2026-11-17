@@ -1,6 +1,6 @@
 /** Scope-aware rename: binder occurrences only, never textual; pure. */
 import { ErrorCodes, ResponseError, type Range, type TextEdit, type WorkspaceEdit } from 'vscode-languageserver/node.js';
-import { bindingAt, type BindingHit } from '../analysis/binder.js';
+import { bindingAt, scopeAt, type BindingHit } from '../analysis/binder.js';
 import type { Analysis } from '../analysis/model.js';
 import { spanToRange } from '../analysis/positions.js';
 
@@ -36,9 +36,25 @@ export function renameAt(analysis: Analysis, offset: number, newName: string): W
   if (hit.binding.name === newName) return null;
   if (!IDENTIFIER_PATTERN.test(newName)) throw renameError(`"${newName}" is not a valid Placitum identifier.`);
   if (KEYWORDS.has(newName)) throw renameError(`"${newName}" is a reserved keyword.`);
-  const scope = analysis.binder?.scopes[hit.binding.scope];
+  const binder = analysis.binder;
+  const scope = binder?.scopes[hit.binding.scope];
   if (scope?.bindings.has(newName) === true) {
     throw renameError(`Renaming to "${newName}" would redeclare a binding in this scope (E506).`);
+  }
+  // A nested scope that already declares newName would capture occurrences of
+  // the renamed binding, silently rebinding them to the inner declaration.
+  if (binder !== null && scope !== undefined) {
+    for (const occurrence of binder.occurrences) {
+      if (occurrence.binding !== hit.binding.id) continue;
+      if (occurrence.span[0] < scope.span[0] || occurrence.span[0] >= scope.span[1]) continue;
+      let current = scopeAt(binder, occurrence.span[0]);
+      while (current !== undefined && current.id !== scope.id) {
+        if (current.bindings.has(newName)) {
+          throw renameError(`Renaming to "${newName}" would capture an occurrence in an inner scope.`);
+        }
+        current = current.parent === null ? undefined : binder.scopes[current.parent];
+      }
+    }
   }
   const edits: TextEdit[] = [{ range: rangeOf(analysis, hit.binding.nameSpan), newText: newName }];
   for (const occurrence of analysis.binder?.occurrences ?? []) {

@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { VERSION } from '../../src/version.js';
 import { createTestClient } from './harness.js';
 
 describe('lifecycle', () => {
   it('initializes a minimal client with the documented capabilities', async () => {
     const server = createTestClient();
     const result = await server.initialize();
-    expect(result.serverInfo).toEqual({ name: 'placitum-lsp', version: '0.1.0' });
+    expect(result.serverInfo).toEqual({ name: 'placitum-lsp', version: VERSION });
     expect(result.capabilities.positionEncoding).toBe('utf-16');
     expect(result.capabilities.textDocumentSync).toEqual({
       openClose: true,

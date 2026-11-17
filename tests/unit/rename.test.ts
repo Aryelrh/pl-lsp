@@ -64,6 +64,12 @@ describe('renameAt', () => {
     expect(editLines(renameAt(fstring, fstring.document.getText().indexOf('x'), 'y'))).toEqual([0, 1]);
   });
 
+  it('rejects a new name that would capture an occurrence in an inner scope', () => {
+    const source = 'let x = 1\nif true {\n  let y = x\n  print!(y)\n}\n';
+    const analysis = analysisOf(source);
+    expect(() => renameAt(analysis, source.indexOf('x'), 'y')).toThrow(/capture an occurrence/);
+  });
+
   it('rejects invalid names, keywords and same-scope collisions', () => {
     const analysis = analysisOf('let a = 1\nlet b = 2\n');
     const offset = analysis.document.getText().indexOf('b');

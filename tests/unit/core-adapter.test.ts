@@ -8,7 +8,10 @@ describe('core adapter', () => {
     const installed = JSON.parse(
       readFileSync(new URL('../../node_modules/placitum/package.json', import.meta.url), 'utf8'),
     ) as { version: string };
-    expect(installed.version).toBe(CORE_API_VERSION);
+    // Patch releases keep the adapter's API contract; only major.minor must match.
+    expect(installed.version.split('.').slice(0, 2).join('.')).toBe(
+      CORE_API_VERSION.split('.').slice(0, 2).join('.'),
+    );
   });
 
   it('analyzes the Rosetta fixture through the core barrel', () => {

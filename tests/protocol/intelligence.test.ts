@@ -46,6 +46,29 @@ describe('intelligence capabilities', () => {
 });
 
 describe('intelligence over the protocol', () => {
+  it('uses the new document version immediately after didChange', async () => {
+    const server = createTestClient();
+    await server.initialize();
+    open(server, 'let alpha = 1\nprint!(alpha)\n');
+    const before = (await server.connection.sendRequest('textDocument/hover', {
+      textDocument: { uri: URI },
+      position: { line: 0, character: 5 },
+    })) as Hover;
+    expect(JSON.stringify(before?.contents)).toContain('alpha');
+
+    server.connection.sendNotification('textDocument/didChange', {
+      textDocument: { uri: URI, version: 2 },
+      contentChanges: [{ text: 'let beta = 1\nprint!(beta)\n' }],
+    });
+    const after = (await server.connection.sendRequest('textDocument/hover', {
+      textDocument: { uri: URI },
+      position: { line: 0, character: 5 },
+    })) as Hover;
+    expect(JSON.stringify(after?.contents)).toContain('beta');
+    expect(JSON.stringify(after?.contents)).not.toContain('alpha');
+    server.dispose();
+  });
+
   it('answers completion with snippets and text edits', async () => {
     const server = createTestClient();
     await server.initialize({

@@ -72,6 +72,9 @@ function initializeResult(supportsPullDiagnostics: boolean): InitializeResult {
   const result: InitializeResult = {
     capabilities: {
       positionEncoding: 'utf-16',
+      workspace: {
+        workspaceFolders: { supported: true, changeNotifications: true },
+      },
       textDocumentSync: {
         openClose: true,
         change: TextDocumentSyncKind.Incremental,
@@ -207,7 +210,7 @@ export function createServer(connection: Connection, options: ServerOptions): vo
     }
   };
 
-  const analysisAt = (uri: string): Analysis | undefined => documents.analysisFor(uri);
+  const analysisAt = (uri: string): Analysis | undefined => documents.freshAnalysis(uri);
 
   const pullConfiguration = (refreshDiagnostics = false): void => {
     if (capabilities?.workspace?.configuration !== true) return;
