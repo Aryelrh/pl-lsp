@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Aryelrh/pl-lsp/main/docs/placitum-logo-set/favicon/android-chrome-192x192.png" alt="Placitum" width="192">
+</p>
+
 # placitum-lsp
 
 Language Server Protocol (LSP) server for **Placitum**, a capability-secure shell
