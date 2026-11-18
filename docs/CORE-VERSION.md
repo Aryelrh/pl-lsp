@@ -2,8 +2,9 @@
 
 - Package: `placitum` (quesadx/pl-lg), declared in `package.json` as `^1.0.0`
   from the npm registry (first published 2026-09-23; the MIT `LICENSE`/`AUTHORS`
-  travel in the tarball).
-- Adapter: `src/analysis/core-adapter.ts`; its `CORE_API_VERSION` must equal this SHA.
+  travel in the tarball). The current patch release is `1.0.1`.
+- Adapter: `src/analysis/core-adapter.ts`; its `CORE_API_VERSION` tracks the API
+  surface (`1.0.0`), not the patch release.
 - The server imports only the root barrel, and only through the adapter. It never
   imports the evaluator, guard, stdlib runtime, or host bindings.
 

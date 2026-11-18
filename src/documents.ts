@@ -15,6 +15,7 @@ export class Documents {
   private readonly analyses = new Map<string, Analysis>();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private config: PlacitumConfig;
+  private pullDiagnostics = false;
 
   constructor(
     private readonly connection: Connection,
@@ -33,20 +34,9 @@ export class Documents {
     this.sync.listen(this.connection);
   }
 
-  /** Cached analysis for an open document, computed on first use. */
-  analysisFor(uri: string): Analysis | undefined {
-    const cached = this.analyses.get(uri);
-    if (cached !== undefined) return cached;
-    const document = this.sync.get(uri);
-    if (document === undefined) return undefined;
-    const analysis = createAnalysis(document);
-    this.analyses.set(uri, analysis);
-    return analysis;
-  }
-
   /**
-   * Fresh analysis for client-driven requests (pull diagnostics, semantic tokens):
-   * recomputes when the cached version is stale instead of waiting for the debounce.
+   * Fresh analysis for every client request: recomputes when the cached version
+   * is stale instead of waiting for the debounce timer.
    */
   freshAnalysis(uri: string): Analysis | undefined {
     const document = this.sync.get(uri);
@@ -63,14 +53,17 @@ export class Documents {
     this.analyzeAndPublish(uri);
   }
 
-  /** Drop cached state for a file that changed on disk outside the editor. */
-  invalidate(uri: string): void {
-    this.analyses.delete(uri);
-  }
-
   setConfig(config: PlacitumConfig): void {
     this.config = config;
     for (const uri of this.sync.keys()) this.schedule(uri);
+  }
+
+  /**
+   * Pull clients keep their own diagnostic collection; pushing as well makes VS
+   * Code render every diagnostic twice because it unions both collections.
+   */
+  setPullDiagnostics(pull: boolean): void {
+    this.pullDiagnostics = pull;
   }
 
   private schedule(uri: string): void {
@@ -106,6 +99,7 @@ export class Documents {
   }
 
   private publish(uri: string, diagnostics: Diagnostic[], version: number | undefined): void {
+    if (this.pullDiagnostics) return;
     try {
       this.connection.sendDiagnostics(version === undefined ? { uri, diagnostics } : { uri, diagnostics, version });
     } catch (error) {

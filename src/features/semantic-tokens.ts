@@ -9,7 +9,7 @@ import {
   type Program,
   type TokenKind,
 } from '../analysis/core-adapter.js';
-import { isWritten, nameSpanIn } from '../analysis/binder.js';
+import { nameSpanIn } from '../analysis/binder.js';
 import type { Analysis } from '../analysis/model.js';
 import { collectNodes } from '../analysis/walk.js';
 
@@ -65,11 +65,15 @@ export function semanticTokens(analysis: Analysis): SemanticTokens {
   const binder = analysis.binder;
   if (binder !== null && program !== null) {
     const source = analysis.document.getText();
+    const written = new Set<number>();
+    for (const occurrence of binder.occurrences) {
+      if (occurrence.mode === 'write') written.add(occurrence.binding);
+    }
     for (const binding of binder.bindings) {
       if (binding.kind === 'builtin') continue;
       const type = typeIndex(binding.kind === 'fn' ? 'function' : binding.kind === 'param' ? 'parameter' : 'variable');
       let modifiers = MODIFIER_DECLARATION;
-      if (binding.kind !== 'fn' && !isWritten(binder, binding.id)) modifiers |= MODIFIER_READONLY;
+      if (binding.kind !== 'fn' && !written.has(binding.id)) modifiers |= MODIFIER_READONLY;
       push(binding.nameSpan, type, modifiers);
     }
     for (const occurrence of binder.occurrences) {

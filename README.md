@@ -40,7 +40,7 @@ matrix. Packaging is release-ready: `npm pack` contents are snapshotted and
 `npm run smoke:pack` installs the tarball in a fresh temp project and runs a raw
 stdio E2E against the installed binary; the VS Code handoff spec is complete in
 `docs/VSCODE-HANDOFF.md`.
-`npm run ci` is green (typecheck, lint, build, 274 unit/protocol/e2e tests, a
+`npm run ci` is green (typecheck, lint, build, the unit/protocol/e2e suite, a
 stdout-purity check, Neovim E2E driving the shipped recipe for rename, completion,
 hover, diagnostics and the manifest, and the packaging smoke).
 
@@ -101,8 +101,10 @@ npm install -g placitum-lsp
 placitum-lsp --stdio
 ```
 
-> Publishing to npm is not enabled yet; until then use `npm link` / a packed tarball
-> (`npm pack`). The server must always be reachable as `placitum-lsp` on `PATH`.
+> `placitum-lsp` is published on npm. This checkout is prepared for the 0.1.1
+> release; publishing happens from a `v0.1.1` tag. For local development use
+> `npm link` or a packed tarball (`npm pack`). The server must always be
+> reachable as `placitum-lsp` on `PATH`.
 
 ## CLI
 
@@ -215,7 +217,8 @@ overrides defaults at startup. Unknown keys and wrong types fall back to default
 {
   "placitum.diagnostics.enable": true,
   "placitum.diagnostics.scope": true,          // E500/E506 binder checks
-  "placitum.diagnostics.strictChecks": true,   // E505 + literal-type checks
+  "placitum.diagnostics.strictChecks": true,   // E505 strict pipe checks
+  "placitum.diagnostics.literalTypes": true,   // E501-E504 literal type checks
   "placitum.completion.enable": true,
   "placitum.completion.snippets": true,
   "placitum.codeLens.enable": true,

@@ -13,7 +13,6 @@ const ALLOWED = new Set([
   '@typescript-eslint/eslint-plugin',
   '@typescript-eslint/parser',
   'eslint',
-  'tsx',
   'typescript',
   'vitest',
 ]);

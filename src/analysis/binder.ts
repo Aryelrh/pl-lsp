@@ -78,6 +78,8 @@ class Binder {
   private readonly diagnostics: BinderDiagnostic[] = [];
   private readonly declared = new Map<Statement, Binding>();
   private nextId = 0;
+  /** Scope id of the function body currently being walked; null at top level. */
+  private currentFnScope: number | null = null;
 
   constructor(private readonly source: string) {}
 
@@ -189,7 +191,10 @@ class Binder {
             this.define(fnScope, param.id, 'param', param.span, param.span, param, unknownType());
           }
         }
+        const previous = this.currentFnScope;
+        this.currentFnScope = fnScope.id;
         this.walkScope(statement.body.body, fnScope);
+        this.currentFnScope = previous;
         return;
       }
       case 'IfStmt': {
@@ -243,14 +248,14 @@ class Binder {
     if (expr === null) return;
     switch (expr.kind) {
       case 'Identifier': {
-        const binding = this.resolve(expr.name, scope, exclude);
+        const binding = this.resolveVisible(expr.name, scope, expr.span[0], exclude);
         if (binding === undefined) this.unboundRead(expr.name, expr.span);
         else this.occurrences.push({ span: tuple(expr.span), binding: binding.id, mode: 'read' });
         return;
       }
       case 'AssignExpr': {
         this.walkExpr(expr.value, scope, exclude);
-        const binding = this.resolve(expr.id, scope);
+        const binding = this.resolveVisible(expr.id, scope, expr.span[0]);
         if (binding === undefined) this.unboundAssign(expr.id, expr.span);
         else this.occurrences.push({ span: this.nameSpanAfter(expr.span[0], expr.id), binding: binding.id, mode: 'write' });
         return;
@@ -304,23 +309,42 @@ class Binder {
   private walkBangTarget(expr: { target: string; span: readonly [number, number] }, scope: Scope): void {
     const first = expr.target.split('.')[0];
     if (first === undefined || first.length === 0) return;
-    const binding = this.resolve(first, scope);
+    const binding = this.resolveVisible(first, scope, expr.span[0]);
     if (binding === undefined) return;
     this.occurrences.push({ span: [expr.span[0], expr.span[0] + first.length], binding: binding.id, mode: 'read' });
   }
 
-  private resolve(name: string, scope: Scope, exclude?: Binding): Binding | undefined {
+  /**
+   * True when `binding` has executed at `offset` in `readScope`. A later
+   * declaration is visible only from a nested fn body (a closure may run after
+   * the declaration); straight-line code and the current fn body are ordered.
+   */
+  private isVisibleAt(binding: Binding, readScope: Scope, offset: number): boolean {
+    if (binding.declSpan[0] <= offset) return true;
+    let current: Scope | undefined = readScope;
+    let crossedFnBoundary = false;
+    while (current !== undefined) {
+      if (current.id === binding.scope) return crossedFnBoundary;
+      if (current.id === this.currentFnScope) crossedFnBoundary = true;
+      current = current.parent === null ? undefined : this.scopes[current.parent];
+    }
+    return true;
+  }
+
+  private resolveVisible(name: string, scope: Scope, offset: number, exclude?: Binding): Binding | undefined {
     let current: Scope | undefined = scope;
     while (current !== undefined) {
       const binding = current.bindings.get(name);
-      if (binding !== undefined && binding !== exclude) return binding;
+      if (binding !== undefined && binding !== exclude && this.isVisibleAt(binding, scope, offset)) {
+        return binding;
+      }
       current = current.parent === null ? undefined : this.scopes[current.parent];
     }
     return undefined;
   }
 
-  private resolver(scope: Scope, exclude?: Binding): (name: string) => TypeInfo | undefined {
-    return (name) => this.resolve(name, scope, exclude)?.type;
+  private resolver(scope: Scope, exclude?: Binding): (name: string, node: Identifier) => TypeInfo | undefined {
+    return (name, node) => this.resolveVisible(name, scope, node.span[0], exclude)?.type;
   }
 
   private unboundRead(name: string, span: readonly [number, number]): void {
@@ -410,8 +434,4 @@ export function typeResolver(result: BinderResult): (name: string, node: Identif
     const occurrence = occurrences.get(node.span[0]);
     return occurrence === undefined ? undefined : bindings.get(occurrence.binding)?.type;
   };
-}
-
-export function isWritten(result: BinderResult, bindingId: number): boolean {
-  return result.occurrences.some((occurrence) => occurrence.binding === bindingId && occurrence.mode === 'write');
 }

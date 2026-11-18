@@ -34,6 +34,9 @@ describe('capability UX capabilities', () => {
   it('advertises code actions, code lens, inlay hints and commands', async () => {
     const server = createTestClient();
     const result = await server.initialize();
+    expect(result.capabilities.workspace).toEqual({
+      workspaceFolders: { supported: true, changeNotifications: true },
+    });
     expect(result.capabilities.codeActionProvider).toEqual({ codeActionKinds: ['quickfix'], resolveProvider: false });
     expect(result.capabilities.codeLensProvider).toEqual({ resolveProvider: false });
     expect(result.capabilities.inlayHintProvider).toEqual({ resolveProvider: false });

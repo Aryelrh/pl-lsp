@@ -70,8 +70,31 @@ describe('binder scopes', () => {
     expect(bindOf(source).diagnostics).toEqual([]);
   });
 
-  it('does not flag use-before-let within the same scope', () => {
-    expect(bindOf('let y = z\nlet z = 1\n').diagnostics).toEqual([]);
+  it('flags a straight-line read of a later let', () => {
+    const diagnostics = bindOf('let y = z\nlet z = 1\n').diagnostics;
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({ code: 'E500_EVAL_UNBOUND_VAR', span: [8, 9] });
+  });
+
+  it('resolves the outer binding before an inner let shadows it', () => {
+    const source = 'let x = 1\nfn f() {\n  print!(x)\n  let x = 2\n}\n';
+    const binder = bindOf(source);
+    expect(binder.diagnostics).toEqual([]);
+    const readOffset = source.indexOf('print!(x)') + 'print!('.length;
+    const read = binder.occurrences.find((occurrence) => occurrence.span[0] === readOffset);
+    expect(binder.bindings[read?.binding ?? -1]?.declSpan[0]).toBe(0);
+  });
+
+  it('flags a read before a later let inside the same function body', () => {
+    const diagnostics = bindOf('fn f() {\n  print!(x)\n  let x = 2\n}\n').diagnostics;
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe('E500_EVAL_UNBOUND_VAR');
+  });
+
+  it('flags a call before the fn declaration at the same level', () => {
+    const diagnostics = bindOf('f()\nfn f() { return 1 }\n').diagnostics;
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]?.code).toBe('E500_EVAL_UNBOUND_VAR');
   });
 
   it('treats fn parameters and body lets as one scope', () => {

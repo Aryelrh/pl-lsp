@@ -91,16 +91,36 @@ describe('add-needs quick fix (E301)', () => {
     expect(quickFix(actions).title).toBe('Add needs fs.write("/tmp/a\\"b")');
   });
 
-  it('skips the fix when the token already exists at the top level', () => {
+  it('expands a function-only needs clause instead of widening the top level', () => {
     const source = [
-      'needs fs.read("/etc/app.json"), net("api.example.com")',
-      'fn f() needs only(net("api.example.com")) {',
+      'needs fs.read("/var/**")',
+      'fn f() needs only(fs.read("/var/**")) {',
       '  fs.readFile!("/etc/app.json")',
       '}',
       '',
     ].join('\n');
-    const { actions } = actionsFor(source, 'E301_EXTRACT_UNCOVERED_CAPABILITY');
-    expect(actions.some((candidate) => 'edit' in candidate)).toBe(false);
+    const { analysis, actions } = actionsFor(source, 'E301_EXTRACT_UNCOVERED_CAPABILITY');
+    const fix = quickFix(actions);
+    expect(fix.title).toBe('Add needs fs.read("/etc/app.json")');
+    expect(apply(analysis, fix)).toBe(
+      'needs fs.read("/var/**")\nfn f() needs fs.read("/var/**"), fs.read("/etc/app.json") {\n  fs.readFile!("/etc/app.json")\n}\n',
+    );
+  });
+
+  it('appends to a function needs clause when it is not only(...)', () => {
+    const source = [
+      'needs fs.read("/var/**"), fs.write("/tmp/**")',
+      'fn f() needs fs.read("/var/**"), fs.write("/tmp/**") {',
+      '  fs.readFile!("/etc/app.json")',
+      '}',
+      '',
+    ].join('\n');
+    const { analysis, actions } = actionsFor(source, 'E301_EXTRACT_UNCOVERED_CAPABILITY');
+    const fix = quickFix(actions);
+    expect(firstEdit(fix).range.start.line).toBe(1);
+    expect(apply(analysis, fix)).toBe(
+      'needs fs.read("/var/**"), fs.write("/tmp/**")\nfn f() needs fs.read("/var/**"), fs.write("/tmp/**"), fs.read("/etc/app.json") {\n  fs.readFile!("/etc/app.json")\n}\n',
+    );
   });
 
   it('does not offer a fix for deferred (non-literal) bang calls', () => {

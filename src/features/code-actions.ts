@@ -17,6 +17,8 @@ import {
   type CallExpr,
   type CapabilityToken,
   type EffectCategory,
+  type FnDecl,
+  type NeedsDecl,
   type Statement,
   type Token,
 } from '../analysis/core-adapter.js';
@@ -152,6 +154,19 @@ function bangAt(analysis: Analysis, span: readonly [number, number]): BangCall |
   );
 }
 
+/** Innermost fn with its own needs clause that contains `offset`. */
+function enclosingFnNeeds(analysis: Analysis, offset: number): NeedsDecl | null {
+  const program = analysis.core.program;
+  if (program === null) return null;
+  let best: FnDecl | null = null;
+  for (const fn of collectNodes<FnDecl>(program.body, 'FnDecl')) {
+    if (fn.needs === null) continue;
+    if (offset < fn.span[0] || offset >= fn.span[1]) continue;
+    if (best === null || fn.span[1] - fn.span[0] < best.span[1] - best.span[0]) best = fn;
+  }
+  return best?.needs ?? null;
+}
+
 function addNeedsFix(analysis: Analysis, diagnostic: Diagnostic): Fix | null {
   const program = analysis.core.program;
   if (program === null) return null;
@@ -162,12 +177,36 @@ function addNeedsFix(analysis: Analysis, diagnostic: Diagnostic): Fix | null {
   const token = needsTokenFor(bang.target, argument.value);
   if (token === null) return null;
 
+  const fnNeeds = enclosingFnNeeds(analysis, bang.span[0]);
   const present = new Set<string>();
-  for (const needs of program.needs) for (const existing of needs.tokens) {
-    const key = tokenKey(existing);
-    if (key !== null) present.add(key);
+  for (const needs of fnNeeds === null ? program.needs : [fnNeeds]) {
+    for (const existing of needs.tokens) {
+      const key = tokenKey(existing);
+      if (key !== null) present.add(key);
+    }
   }
   if (present.has(token.key)) return null;
+
+  if (fnNeeds !== null) {
+    const only = fnNeeds.tokens.length === 1 && fnNeeds.tokens[0]?.kind === 'OnlyCapability'
+      ? fnNeeds.tokens[0]
+      : null;
+    if (only !== null) {
+      // `only(...)` takes one token; replace it with an explicit two-token list.
+      const source = analysis.document.getText();
+      const inner = source.slice(only.inner.span[0], only.inner.span[1]);
+      return {
+        title: `Add needs ${token.text}`,
+        edit: edit(analysis, rangeOf(analysis, only.span), `${inner}, ${token.text}`),
+        preferred: true,
+      };
+    }
+    return {
+      title: `Add needs ${token.text}`,
+      edit: edit(analysis, rangeOf(analysis, [fnNeeds.span[1], fnNeeds.span[1]]), `, ${token.text}`),
+      preferred: true,
+    };
+  }
 
   const last = program.needs[program.needs.length - 1];
   if (last !== undefined) {
